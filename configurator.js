@@ -1,281 +1,292 @@
-aimport React, { useState, useEffect } from 'react';
-import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
-import { Select } from '@/components/ui/select';
+// Markdown parser function
+async function parseMarkdownData(markdownText) {
+  const sections = markdownText.split('\n## ');
+  const data = {
+    shaftEndCovers: [],
+    gearHousings: [],
+    driveGearSets: {},
+    idlerGearSets: [],
+    pecCover: {},
+    shaftStyles: [],
+    rotationOptions: [
+      { code: '1', description: 'CW' },
+      { code: '2', description: 'CCW' },
+      { code: '3', description: 'Bi rotational' },
+      { code: '4', description: 'CW with bearing' },
+      { code: '5', description: 'CCW with bearing' },
+      { code: '6', description: 'Bi rotational with bearing' },
+      { code: '8', description: 'Birotational motor with 1-1/4" NPT case drain with bearing' },
+      { code: '9', description: 'Birotational motor with 1-1/4" NPT case drain without bearing' }
+    ]
+  };
 
-// Series data (as before...)
-const series120Data = {
-  shaftEndCovers: [
-    { code: '08', partNumber: '0420-040-501', description: '2-Bolt B' },
-    { code: '05', partNumber: '0420-041-501', description: '2-Bolt A' },
-    { code: '07', partNumber: '0420-048-501', description: '2-Bolt B Type II' },
-    { code: '53', partNumber: '0420-042-501', description: '4-Bolt B' },
-    { code: '38', partNumber: '0420-049-501', description: '4-Bolt "R" Flange' },
-    { code: '16', partNumber: '0420-043-501', description: '6-Bolt Rnd 2.62"' },
-    { code: '57', partNumber: '0420-045-501', description: '2 & 4-Bolt B' }
-  ],
-  // ... (rest of the series data remains the same)
-  shaftStyles: [
-    { code: '36', description: '7/8-13 Spl.' },
-    { code: '41', description: '7/8" Keyed' },
-    { code: '54', description: '1.00" Keyed' },
-    { code: '76', description: 'Type II 7/8-13" Spl' }
-  ]
-};
+  sections.forEach(section => {
+    if (section.includes('Shaft End Cover (SEC)')) {
+      const lines = section.split('\n').filter(line => line.includes('|'));
+      data.shaftEndCovers = lines.slice(2).map(line => {
+        const [code, partNumber, description] = line.split('|').slice(1, -1).map(s => s.trim());
+        return { code, partNumber, description };
+      });
+    }
+    else if (section.includes('P.E.C Cover')) {
+      const lines = section.split('\n').filter(line => line.includes('|'));
+      const [description, partNumber] = lines[2].split('|').slice(1, -1).map(s => s.trim());
+      data.pecCover = { description, partNumber };
+    }
+    else if (section.includes('Gear Housing')) {
+      const lines = section.split('\n').filter(line => line.includes('|'));
+      data.gearHousings = lines.slice(2).map(line => {
+        const [code, partNumber, description] = line.split('|').slice(1, -1).map(s => s.trim());
+        return { code, partNumber, description };
+      });
+    }
+    else if (section.includes('Drive Gear Sets') && !section.includes('Idler')) {
+      const headerMatch = section.match(/Code (\d+)/);
+      if (headerMatch) {
+        const styleCode = headerMatch[1];
+        if (!data.driveGearSets[styleCode]) {
+          data.driveGearSets[styleCode] = {};
+        }
+        const lines = section.split('\n').filter(line => line.includes('|'));
+        lines.slice(2).forEach(line => {
+          const [code, partNumber] = line.split('|').slice(1, -1).map(s => s.trim());
+          data.driveGearSets[styleCode][code] = partNumber;
+        });
+        const styleDesc = section.match(/\((.*?)\)/)[1];
+        if (!data.shaftStyles.find(style => style.code === styleCode)) {
+          data.shaftStyles.push({ code: styleCode, description: styleDesc });
+        }
+      }
+    }
+    else if (section.includes('Idler Gear Sets')) {
+      const lines = section.split('\n').filter(line => line.includes('|'));
+      data.idlerGearSets = lines.slice(2).map(line => {
+        const [code, partNumber, description] = line.split('|').slice(1, -1).map(s => s.trim());
+        return { code, partNumber, description };
+      });
+    }
+  });
+  return data;
+}
+
+let seriesData = null;
+
+async function loadSeriesData() {
+  try {
+    const fileContent = await window.fs.readFile('120-series.md', { encoding: 'utf8' });
+    seriesData = await parseMarkdownData(fileContent);
+    initializeConfigurator();
+  } catch (error) {
+    console.error('Error loading series data:', error);
+    document.getElementById('root').innerHTML = `Error loading configurator data: ${error.message}`;
+  }
+}
+
+function generateBOM(config) {
+  if (!config.type || !config.secCode || !config.gearSize || !config.shaftStyle) return [];
+  
+  const bom = [];
+  
+  // Add shaft end cover
+  const sec = seriesData.shaftEndCovers.find(sec => sec.code === config.secCode);
+  if (sec) {
+    bom.push({
+      partNumber: sec.partNumber,
+      quantity: 1,
+      description: `Shaft End Cover - ${sec.description}`
+    });
+  }
+
+  // Add gear housings
+  const gearSizes = [config.gearSize];
+  if (config.pumpType !== 'single' && config.additionalGearSizes) {
+    gearSizes.push(...config.additionalGearSizes.filter(size => size));
+  }
+  
+  gearSizes.forEach(size => {
+    const housing = seriesData.gearHousings.find(h => h.code === size);
+    if (housing) {
+      bom.push({
+        partNumber: housing.partNumber,
+        quantity: 1,
+        description: `Gear Housing - ${housing.description}`
+      });
+    }
+  });
+
+  // Add drive gear set
+  const driveGearKey = `${config.gearSize}-${config.shaftStyle}`;
+  const driveGearPartNumber = seriesData.driveGearSets[config.shaftStyle]?.[driveGearKey];
+  if (driveGearPartNumber && driveGearPartNumber !== 'N/A') {
+    bom.push({
+      partNumber: driveGearPartNumber,
+      quantity: 1,
+      description: `Drive Gear Set - ${config.gearSize}" with ${seriesData.shaftStyles.find(s => s.code === config.shaftStyle)?.description}`
+    });
+  }
+
+  // Add idler gear sets
+  if (config.pumpType !== 'single' && config.additionalGearSizes) {
+    config.additionalGearSizes.forEach(size => {
+      if (size) {
+        const idlerSet = seriesData.idlerGearSets.find(set => set.code === size);
+        if (idlerSet) {
+          bom.push({
+            partNumber: idlerSet.partNumber,
+            quantity: 1,
+            description: `Idler Gear Set - ${idlerSet.description}`
+          });
+        }
+      }
+    });
+  }
+
+  // Add PEC Cover
+  if (seriesData.pecCover) {
+    bom.push({
+      partNumber: seriesData.pecCover.partNumber,
+      quantity: 1,
+      description: `PEC Cover - ${seriesData.pecCover.description}`
+    });
+  }
+
+  return bom;
+}
+
+function generateModelCode(config) {
+  if (!config.type || !config.rotation || !config.secCode || !config.gearSize || !config.shaftStyle) return '';
+  
+  let code = `${config.type}120A${config.rotation}${config.secCode}`;
+  code += config.portingCodes[0] || 'XXXX';
+  code += `${config.gearSize}-${config.shaftStyle}`;
+  
+  if (config.pumpType !== 'single' && config.additionalGearSizes.length > 0) {
+    config.additionalGearSizes.forEach((size, index) => {
+      if (size) {
+        code += (config.additionalPortingCodes[index] || 'XXXX');
+        code += `${size}-${index + 1}`;
+      }
+    });
+  }
+  
+  return code;
+}
 
 const PumpConfigurator = () => {
-  const [config, setConfig] = useState({
-    type: 'P',
+  const [config, setConfig] = React.useState({
+    type: '',
     series: '120',
-    pumpType: 'single',
-    rotation: '1',
-    secCode: '53',
-    gearSize: '20',
-    shaftStyle: '36',
+    pumpType: '',
+    rotation: '',
+    secCode: '',
+    gearSize: '',
+    shaftStyle: '',
     additionalGearSizes: [],
-    portingCodes: ['XXXX'],
+    portingCodes: [''],
     additionalPortingCodes: []
   });
 
-  const [bom, setBom] = useState([]);
+  const [bom, setBom] = React.useState([]);
 
-  // Generate BOM function remains the same...
+  React.useEffect(() => {
+    setBom(generateBOM(config));
+  }, [config]);
 
-  const generateModelCode = () => {
-    let code = `${config.type}${config.series}A${config.rotation}${config.secCode}`;
-    code += config.portingCodes[0];
-    code += `${config.gearSize}-${config.shaftStyle}`;
-    
-    if (config.pumpType !== 'single') {
-      config.additionalGearSizes.forEach((size, index) => {
-        code += config.additionalPortingCodes[index] || 'XXXX';
-        code += `${size}-${index + 1}`;
-      });
-    }
-    
-    return code;
+  const createEmptyOption = () => React.createElement('option', { value: '' }, '-- Select --');
+
+  const createSelectField = (label, value, options, onChange) => {
+    return React.createElement('div', { className: 'mb-4' },
+      React.createElement('label', { className: 'block text-sm font-medium mb-2' }, label),
+      React.createElement('select', {
+        className: 'w-full p-2 border rounded',
+        value: value,
+        onChange: (e) => onChange(e.target.value)
+      }, [
+        createEmptyOption(),
+        ...options.map(option => 
+          React.createElement('option', { 
+            value: option.value || option.code,
+            key: option.value || option.code
+          }, option.label || `${option.code} - ${option.description}`)
+        )
+      ])
+    );
   };
 
-  return (
-    <Card className="w-full max-w-4xl mx-auto">
-      <CardHeader>
-        <CardTitle className="text-2xl font-bold">Hydraulic Gear Pump Configurator</CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-6">
-        {/* Configuration Form */}
-        <div className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium">Type</label>
-              <select 
-                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm"
-                value={config.type}
-                onChange={(e) => setConfig({ ...config, type: e.target.value })}
-              >
-                <option value="P">Pump (P)</option>
-                <option value="M">Motor (M)</option>
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium">Pump Type</label>
-              <select 
-                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm"
-                value={config.pumpType}
-                onChange={(e) => {
-                  const newConfig = { ...config, pumpType: e.target.value };
-                  if (e.target.value === 'single') {
-                    newConfig.additionalGearSizes = [];
-                    newConfig.additionalPortingCodes = [];
-                  } else {
-                    const count = e.target.value === 'tandem' ? 1 : e.target.value === 'triple' ? 2 : 3;
-                    newConfig.additionalGearSizes = Array(count).fill(config.gearSize);
-                    newConfig.additionalPortingCodes = Array(count).fill('XXXX');
-                  }
-                  setConfig(newConfig);
-                }}
-              >
-                <option value="single">Single</option>
-                <option value="tandem">Tandem</option>
-                <option value="triple">Triple</option>
-                <option value="quad">Quad</option>
-              </select>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium">Rotation</label>
-              <select 
-                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm"
-                value={config.rotation}
-                onChange={(e) => setConfig({ ...config, rotation: e.target.value })}
-              >
-                {series120Data.rotationOptions.map(option => (
-                  <option key={option.code} value={option.code}>
-                    {option.code} - {option.description}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium">Shaft End Cover</label>
-              <select 
-                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm"
-                value={config.secCode}
-                onChange={(e) => setConfig({ ...config, secCode: e.target.value })}
-              >
-                {series120Data.shaftEndCovers.map(sec => (
-                  <option key={sec.code} value={sec.code}>
-                    {sec.code} - {sec.description}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium">Primary Porting Code</label>
-              <input
-                type="text"
-                maxLength={4}
-                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm"
-                value={config.portingCodes[0]}
-                onChange={(e) => setConfig({
-                  ...config,
-                  portingCodes: [e.target.value.toUpperCase()]
-                })}
-                placeholder="XXXX"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium">Gear Size</label>
-              <select 
-                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm"
-                value={config.gearSize}
-                onChange={(e) => setConfig({ ...config, gearSize: e.target.value })}
-              >
-                {series120Data.gearHousings.map(housing => (
-                  <option key={housing.code} value={housing.code}>
-                    {housing.code} - {housing.description}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium">Shaft Style</label>
-            <select 
-              className="mt-1 block w-full rounded-md border-gray-300 shadow-sm"
-              value={config.shaftStyle}
-              onChange={(e) => setConfig({ ...config, shaftStyle: e.target.value })}
-            >
-              {series120Data.shaftStyles.map(style => (
-                <option key={style.code} value={style.code}>
-                  {style.code} - {style.description}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {config.pumpType !== 'single' && config.additionalGearSizes.map((size, index) => (
-            <div key={index} className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium">
-                  Additional Gear Size {index + 1}
-                </label>
-                <select 
-                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm"
-                  value={size}
-                  onChange={(e) => {
-                    const newSizes = [...config.additionalGearSizes];
-                    newSizes[index] = e.target.value;
-                    setConfig({ ...config, additionalGearSizes: newSizes });
-                  }}
-                >
-                  {series120Data.gearHousings.map(housing => (
-                    <option key={housing.code} value={housing.code}>
-                      {housing.code} - {housing.description}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm font-medium">
-                  Additional Porting Code {index + 1}
-                </label>
-                <input
-                  type="text"
-                  maxLength={4}
-                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm"
-                  value={config.additionalPortingCodes[index] || 'XXXX'}
-                  onChange={(e) => {
-                    const newCodes = [...config.additionalPortingCodes];
-                    newCodes[index] = e.target.value.toUpperCase();
-                    setConfig({ ...config, additionalPortingCodes: newCodes });
-                  }}
-                  placeholder="XXXX"
-                />
-              </div>
-            </div>
-          ))}
-        </div>
-
-        {/* Model Code Display */}
-        <div className="mt-8 p-4 bg-gray-100 rounded">
-          <label className="block text-sm font-medium mb-2">Model Code:</label>
-          <div className="font-mono text-lg">{generateModelCode()}</div>
-        </div>
-
-        {/* BOM Display */}
-        <div className="mt-8">
-          <h3 className="text-lg font-medium mb-4">Bill of Materials</h3>
-          <div className="flex">
-            {/* Part Numbers and Quantities (separately selectable) */}
-            <div className="flex-1 border-r pr-4">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="bg-gray-50">
-                    <th className="px-4 py-2 text-left">Part Number</th>
-                    <th className="px-4 py-2 text-left">Qty</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {bom.map((item, index) => (
-                    <tr key={index} className="border-t">
-                      <td className="px-4 py-2 font-mono">{item.partNumber}</td>
-                      <td className="px-4 py-2">{item.quantity}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-
-            {/* Descriptions (separate table) */}
-            <div className="flex-1 pl-4">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="bg-gray-50">
-                    <th className="px-4 py-2 text-left">Description</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {bom.map((item, index) => (
-                    <tr key={index} className="border-t">
-                      <td className="px-4 py-2">{item.description}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </div>
-      </CardContent>
-    </Card>
+  return React.createElement('div', { className: 'bg-white shadow rounded-lg max-w-4xl mx-auto' },
+    React.createElement('div', { className: 'px-4 py-5 border-b border-gray-200' },
+      React.createElement('h3', { className: 'text-2xl font-bold' }, 'Hydraulic Pump Configurator')
+    ),
+    React.createElement('div', { className: 'p-4 space-y-6' },
+      createSelectField('Type', config.type, 
+        [{ value: 'P', label: 'Pump (P)' }, { value: 'M', label: 'Motor (M)' }],
+        (value) => setConfig({ ...config, type: value })
+      ),
+      createSelectField('Pump Type', config.pumpType,
+        [
+          { value: 'single', label: 'Single' },
+          { value: 'tandem', label: 'Tandem' },
+          { value: 'triple', label: 'Triple' },
+          { value: 'quad', label: 'Quad' }
+        ],
+        (value) => {
+          const newConfig = { ...config, pumpType: value };
+          if (value === 'single') {
+            newConfig.additionalGearSizes = [];
+            newConfig.additionalPortingCodes = [];
+          } else {
+            const count = value === 'tandem' ? 1 : value === 'triple' ? 2 : 3;
+            newConfig.additionalGearSizes = Array(count).fill('');
+            newConfig.additionalPortingCodes = Array(count).fill('');
+          }
+          setConfig(newConfig);
+        }
+      ),
+      createSelectField('Rotation', config.rotation, seriesData.rotationOptions,
+        (value) => setConfig({ ...config, rotation: value })
+      ),
+      createSelectField('Shaft End Cover', config.secCode, seriesData.shaftEndCovers,
+        (value) => setConfig({ ...config, secCode: value })
+      ),
+      createSelectField('Gear Size', config.gearSize, seriesData.gearHousings,
+        (value) => setConfig({ ...config, gearSize: value })
+      ),
+      createSelectField('Shaft Style', config.shaftStyle, seriesData.shaftStyles,
+        (value) => setConfig({ ...config, shaftStyle: value })
+      ),
+      // Model Code Display
+      config.type && React.createElement('div', { className: 'mt-8 p-4 bg-gray-100 rounded' },
+        React.createElement('label', { className: 'block text-sm font-medium mb-2' }, 'Model Code:'),
+        React.createElement('div', { className: 'font-mono text-lg' }, generateModelCode(config))
+      ),
+      // BOM Display
+      bom.length > 0 && React.createElement('div', { className: 'mt-8 p-4' },
+        React.createElement('h3', { className: 'text-lg font-medium mb-4' }, 'Bill of Materials'),
+        React.createElement('table', { className: 'w-full text-sm' },
+          React.createElement('thead', null,
+            React.createElement('tr', { className: 'bg-gray-50' },
+              React.createElement('th', { className: 'px-4 py-2 text-left' }, 'Part Number'),
+              React.createElement('th', { className: 'px-4 py-2 text-left' }, 'Qty'),
+              React.createElement('th', { className: 'px-4 py-2 text-left' }, 'Description')
+            )
+          ),
+          React.createElement('tbody', null,
+            bom.map((item, index) =>
+              React.createElement('tr', { key: index, className: 'border-t' },
+                React.createElement('td', { className: 'px-4 py-2 font-mono' }, item.partNumber),
+                React.createElement('td', { className: 'px-4 py-2' }, item.quantity),
+                React.createElement('td', { className: 'px-4 py-2' }, item.description)
+              )
+            )
+          )
+        )
+      )
+    )
   );
 };
 
-export default PumpConfigurator;
+function initializeConfigurator() {
+  ReactDOM.render(React.createElement(PumpConfigurator), document.getElementById('root'));
+}
+
+window.onload = loadSeriesData;
