@@ -9,43 +9,77 @@
         .bom-table {
             border-collapse: collapse;
             width: 100%;
+            font-family: Arial, sans-serif;
+            font-size: 14px;
+            border: 1px solid #ccc;
         }
-        .bom-table th, .bom-table td {
-            border: 1px solid #ddd;
-            padding: 8px;
-            user-select: text;
-        }
-        .bom-table tr {
-            background-color: white;
-        }
-        .bom-table tr:hover {
-            background-color: #f5f5f5;
-        }
+        
         .bom-table th {
+            background-color: #f3f3f3;
+            border: 1px solid #ccc;
+            padding: 8px;
+            font-weight: bold;
+            text-align: left;
             position: sticky;
             top: 0;
-            background-color: #f8f9fa;
+            user-select: none;
         }
+        
+        .bom-table td {
+            border: 1px solid #ccc;
+            padding: 8px;
+            background-color: white;
+        }
+        
+        .bom-table tr:hover td {
+            background-color: #e6f3ff;
+        }
+        
         .selectable-cell {
-            cursor: text;
+            cursor: cell;
+            user-select: text;
+        }
+        
+        .bom-table td.selectable-cell:focus {
+            outline: 2px solid #2196F3;
+            outline-offset: -2px;
+            background-color: #e6f3ff;
+        }
+        
+        /* Column widths like Excel */
+        .bom-table td:nth-child(1) { /* Part Number */
+            width: 150px;
+        }
+        
+        .bom-table td:nth-child(2) { /* Quantity */
+            width: 80px;
+        }
+        
+        .bom-table td:nth-child(3) { /* Description */
+            width: auto;
+        }
+        
+        /* Table container for scrolling */
+        .table-container {
+            max-height: 500px;
+            overflow-y: auto;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            margin-top: 10px;
+        }
+        
+        /* Make text selectable and show selection */
+        .bom-table td::selection {
+            background-color: #b3d7ff;
+        }
+        
+        .bom-table td::-moz-selection {
+            background-color: #b3d7ff;
         }
     </style>
 </head>
 <body class="bg-gray-100 p-4">
     <div id="root">Loading configurator data...</div>
-    <script>
-        // Add error handling
-        window.onerror = function(msg, url, lineNo, columnNo, error) {
-            document.getElementById('root').innerHTML = `
-                <div class="text-red-600">
-                    <p>Error loading configurator:</p>
-                    <p>${msg}</p>
-                    <p>Line: ${lineNo}</p>
-                </div>
-            `;
-            return false;
-        };
-    </script>
     <script src="configurator.js"></script>
 </body>
 </html>

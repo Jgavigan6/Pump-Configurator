@@ -293,30 +293,55 @@ const PumpConfigurator = () => {
         React.createElement('div', { className: 'font-mono text-lg' }, generateModelCode(config))
       ),
       // BOM Display
-      bom.length > 0 && React.createElement('div', { className: 'mt-8 p-4' },
-        React.createElement('h3', { className: 'text-lg font-medium mb-4' }, 'Bill of Materials'),
-        React.createElement('table', { className: 'w-full text-sm' },
+     // Replace the BOM display section in your PumpConfigurator component
+bom.length > 0 && React.createElement('div', { className: 'mt-8 p-4' },
+  React.createElement('h3', { className: 'text-lg font-medium mb-4' }, 'Bill of Materials'),
+  React.createElement('div', { className: 'table-container' },
+      React.createElement('table', { className: 'bom-table' },
           React.createElement('thead', null,
-            React.createElement('tr', { className: 'bg-gray-50' },
-              React.createElement('th', { className: 'px-4 py-2 text-left' }, 'Part Number'),
-              React.createElement('th', { className: 'px-4 py-2 text-left' }, 'Qty'),
-              React.createElement('th', { className: 'px-4 py-2 text-left' }, 'Description')
-            )
+              React.createElement('tr', null,
+                  React.createElement('th', null, 'Part Number'),
+                  React.createElement('th', null, 'Qty'),
+                  React.createElement('th', null, 'Description')
+              )
           ),
           React.createElement('tbody', null,
-            bom.map((item, index) =>
-              React.createElement('tr', { key: index, className: 'border-t' },
-                React.createElement('td', { className: 'px-4 py-2 font-mono' }, item.partNumber),
-                React.createElement('td', { className: 'px-4 py-2' }, item.quantity),
-                React.createElement('td', { className: 'px-4 py-2' }, item.description)
+              bom.map((item, index) =>
+                  React.createElement('tr', { key: index },
+                      React.createElement('td', { 
+                          className: 'selectable-cell',
+                          tabIndex: 0
+                      }, item.partNumber),
+                      React.createElement('td', { 
+                          className: 'selectable-cell',
+                          tabIndex: 0
+                      }, item.quantity),
+                      React.createElement('td', { 
+                          className: 'selectable-cell',
+                          tabIndex: 0
+                      }, item.description)
+                  )
               )
-            )
           )
-        )
       )
-    )
-  );
-};
+  ),
+  React.createElement('div', { className: 'mt-4 flex gap-2' },
+      React.createElement('button', {
+          className: 'px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600',
+          onClick: () => {
+              const parts = bom.map(item => item.partNumber).join('\n');
+              navigator.clipboard.writeText(parts);
+          }
+      }, 'Copy Part Numbers'),
+      React.createElement('button', {
+          className: 'px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600',
+          onClick: () => {
+              const text = bom.map(item => `${item.partNumber}\t${item.quantity}\t${item.description}`).join('\n');
+              navigator.clipboard.writeText(text);
+          }
+      }, 'Copy All')
+  )
+)
 
 function initializeConfigurator() {
   ReactDOM.render(React.createElement(PumpConfigurator), document.getElementById('root'));
