@@ -1,4 +1,20 @@
-// Markdown parser function
+// Add at the very top of configurator.js
+console.log('Loading configurator...');
+
+// Add this before loadSeriesData function
+async function checkFileAvailability() {
+  try {
+    const response = await fetch('120-series.md');
+    console.log('File check response:', response.status);
+    const text = await response.text();
+    console.log('First 100 characters of file:', text.substring(0, 100));
+  } catch (error) {
+    console.error('File check error:', error);
+  }
+}
+
+// Call this after window.onload = loadSeriesData;
+checkFileAvailability();// Markdown parser function
 async function parseMarkdownData(markdownText) {
   const sections = markdownText.split('\n## ');
   const data = {
@@ -73,12 +89,17 @@ let seriesData = null;
 
 async function loadSeriesData() {
   try {
-    const fileContent = await window.fs.readFile('120-series.md', { encoding: 'utf8' });
+    // Use fetch instead of window.fs.readFile
+    const response = await fetch('120-series.md');
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+    const fileContent = await response.text();
     seriesData = await parseMarkdownData(fileContent);
     initializeConfigurator();
   } catch (error) {
     console.error('Error loading series data:', error);
-    document.getElementById('root').innerHTML = `Error loading configurator data: ${error.message}`;
+    document.getElementById('root').innerHTML = `Error loading configurator data: ${error.message}. Make sure 120-series.md is in the same folder.`;
   }
 }
 
