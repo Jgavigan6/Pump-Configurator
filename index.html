@@ -8,6 +8,19 @@
 </head>
 <body class="bg-gray-100 p-4">
     <div id="root">Loading configurator data...</div>
+    <script>
+        // Add error handling
+        window.onerror = function(msg, url, lineNo, columnNo, error) {
+            document.getElementById('root').innerHTML = `
+                <div class="text-red-600">
+                    <p>Error loading configurator:</p>
+                    <p>${msg}</p>
+                    <p>Line: ${lineNo}</p>
+                </div>
+            `;
+            return false;
+        };
+    </script>
     <script src="configurator.js"></script>
 </body>
 </html>
