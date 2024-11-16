@@ -5,6 +5,76 @@
     <script src="https://unpkg.com/react@17/umd/react.development.js"></script>
     <script src="https://unpkg.com/react-dom@17/umd/react-dom.development.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
+    // Add this CSS to your index.html in a style tag in the head section
+`
+<style>
+    .bom-table {
+        border-collapse: collapse;
+        width: 100%;
+    }
+    .bom-table th, .bom-table td {
+        border: 1px solid #ddd;
+        padding: 8px;
+        user-select: text;
+    }
+    .bom-table tr {
+        background-color: white;
+    }
+    .bom-table tr:hover {
+        background-color: #f5f5f5;
+    }
+    .bom-table th {
+        position: sticky;
+        top: 0;
+        background-color: #f8f9fa;
+    }
+    .selectable-cell {
+        cursor: text;
+    }
+</style>
+`
+
+// Replace the BOM display section in your PumpConfigurator component with this:
+bom.length > 0 && React.createElement('div', { className: 'mt-8 p-4' },
+    React.createElement('h3', { className: 'text-lg font-medium mb-4' }, 'Bill of Materials'),
+    React.createElement('div', { style: { overflowX: 'auto' } },
+        React.createElement('table', { className: 'bom-table' },
+            React.createElement('thead', null,
+                React.createElement('tr', null,
+                    React.createElement('th', { className: 'selectable-cell' }, 'Part Number'),
+                    React.createElement('th', { className: 'selectable-cell' }, 'Qty'),
+                    React.createElement('th', { className: 'selectable-cell' }, 'Description')
+                )
+            ),
+            React.createElement('tbody', null,
+                bom.map((item, index) =>
+                    React.createElement('tr', { key: index },
+                        React.createElement('td', { className: 'font-mono selectable-cell' }, item.partNumber),
+                        React.createElement('td', { className: 'selectable-cell' }, item.quantity),
+                        React.createElement('td', { className: 'selectable-cell' }, item.description)
+                    )
+                )
+            )
+        )
+    ),
+    // Add copy buttons for convenience
+    React.createElement('div', { className: 'mt-4 space-x-2' },
+        React.createElement('button', {
+            className: 'px-3 py-1 bg-blue-500 text-white rounded hover:bg-blue-600',
+            onClick: () => {
+                const parts = bom.map(item => item.partNumber).join('\n');
+                navigator.clipboard.writeText(parts);
+            }
+        }, 'Copy Part Numbers'),
+        React.createElement('button', {
+            className: 'px-3 py-1 bg-blue-500 text-white rounded hover:bg-blue-600',
+            onClick: () => {
+                const text = bom.map(item => `${item.partNumber}\t${item.quantity}\t${item.description}`).join('\n');
+                navigator.clipboard.writeText(text);
+            }
+        }, 'Copy All as TSV')
+    )
+)
 </head>
 <body class="bg-gray-100 p-4">
     <div id="root">Loading configurator data...</div>

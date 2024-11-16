@@ -170,7 +170,19 @@ function generateBOM(config) {
       description: `PEC Cover - ${seriesData.pecCover.description}`
     });
   }
-
+// Add this at the end of the generateBOM function, right before the return bom statement
+if (config.type && config.pumpType) {
+  const pumpTypeNumber = 
+      config.pumpType === 'single' ? '1' :
+      config.pumpType === 'tandem' ? '2' :
+      config.pumpType === 'triple' ? '3' : '4';
+      
+  bom.push({
+      partNumber: `${config.type}120-${pumpTypeNumber}`,
+      quantity: 1,
+      description: 'Small Parts Kit'
+  });
+}
   return bom;
 }
 
