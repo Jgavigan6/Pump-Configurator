@@ -6,8 +6,20 @@
 </head>
 <body>
     <div id="root"></div>
+    
+    <!-- Load React -->
     <script src="https://unpkg.com/react@17/umd/react.development.js"></script>
     <script src="https://unpkg.com/react-dom@17/umd/react-dom.development.js"></script>
+    
+    <!-- Load your component -->
     <script src="pump-configurator.js"></script>
+    
+    <!-- Initialize the app -->
+    <script>
+        ReactDOM.render(
+            React.createElement(PumpConfigurator),
+            document.getElementById('root')
+        );
+    </script>
 </body>
 </html>
