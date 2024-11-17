@@ -71,7 +71,6 @@ async function parseMarkdownData(markdownText) {
   });
   return data;
 }
-
 async function loadSeriesData() {
   try {
     // Load both series files
@@ -98,10 +97,10 @@ async function loadSeriesData() {
     initializeConfigurator();
   } catch (error) {
     console.error('Error loading series data:', error);
-    document.getElementById('root').innerHTML = `Error loading configurator data: ${error.message}. 
-      Make sure both 120-series.md and p151-tables.md are in the same folder.`;
+    document.getElementById('root').innerHTML = `Error loading configurator data: ${error.message}. Make sure both series files are in the same folder.`;
   }
 }
+
 function generateBOM(config) {
   if (!config.type || !config.series || !config.secCode || !config.gearSize || !config.shaftStyle) return [];
   
@@ -118,22 +117,15 @@ function generateBOM(config) {
     });
   }
 
-  // Add gear housings
-  const gearSizes = [config.gearSize];
-  if (config.pumpType !== 'single' && config.additionalGearSizes) {
-    gearSizes.push(...config.additionalGearSizes.filter(size => size));
+  // Add primary section gear housing
+  const primaryHousing = currentSeriesData.gearHousings.find(h => h.code === config.gearSize);
+  if (primaryHousing) {
+    bom.push({
+      partNumber: primaryHousing.partNumber,
+      quantity: 1,
+      description: `Gear Housing (Primary) - ${primaryHousing.description}`
+    });
   }
-  
-  gearSizes.forEach(size => {
-    const housing = currentSeriesData.gearHousings.find(h => h.code === size);
-    if (housing) {
-      bom.push({
-        partNumber: housing.partNumber,
-        quantity: 1,
-        description: `Gear Housing - ${housing.description}`
-      });
-    }
-  });
 
   // Add drive gear set
   const driveGearKey = `${config.gearSize}-${config.shaftStyle}`;
@@ -146,16 +138,27 @@ function generateBOM(config) {
     });
   }
 
-  // Add idler gear sets
+  // Add additional sections gear housings and idler sets
   if (config.pumpType !== 'single' && config.additionalGearSizes) {
-    config.additionalGearSizes.forEach(size => {
+    config.additionalGearSizes.forEach((size, index) => {
       if (size) {
+        // Add gear housing for additional section
+        const housing = currentSeriesData.gearHousings.find(h => h.code === size);
+        if (housing) {
+          bom.push({
+            partNumber: housing.partNumber,
+            quantity: 1,
+            description: `Gear Housing (Section ${index + 2}) - ${housing.description}`
+          });
+        }
+
+        // Add idler gear set for additional section
         const idlerSet = currentSeriesData.idlerGearSets.find(set => set.code === size);
         if (idlerSet) {
           bom.push({
             partNumber: idlerSet.partNumber,
             quantity: 1,
-            description: `Idler Gear Set - ${idlerSet.description}`
+            description: `Idler Gear Set (Section ${index + 2}) - ${idlerSet.description}`
           });
         }
       }
@@ -206,7 +209,6 @@ function generateModelCode(config) {
   
   return code;
 }
-
 const PumpConfigurator = () => {
   const [config, setConfig] = React.useState({
     type: '',
@@ -226,6 +228,7 @@ const PumpConfigurator = () => {
   React.useEffect(() => {
     setBom(generateBOM(config));
   }, [config]);
+
   const createEmptyOption = () => React.createElement('option', { value: '' }, '-- Select --');
 
   const createSelectField = (label, value, options, onChange) => {
@@ -247,6 +250,26 @@ const PumpConfigurator = () => {
     );
   };
 
+  const createAdditionalSectionFields = (index) => {
+    return React.createElement('div', { 
+      key: `section-${index}`,
+      className: 'border-t pt-4 mt-4'
+    },
+      React.createElement('h4', { 
+        className: 'font-medium mb-4'
+      }, `Section ${index + 2}`),
+      createSelectField(`Gear Size - Section ${index + 2}`, 
+        config.additionalGearSizes[index] || '',
+        currentSeriesData.gearHousings || [],
+        (value) => {
+          const newSizes = [...config.additionalGearSizes];
+          newSizes[index] = value;
+          setConfig({ ...config, additionalGearSizes: newSizes });
+        }
+      )
+    );
+  };
+
   const currentSeriesData = seriesData[config.series] || {};
 
   return React.createElement('div', { className: 'bg-white shadow rounded-lg max-w-4xl mx-auto' },
@@ -254,7 +277,6 @@ const PumpConfigurator = () => {
       React.createElement('h3', { className: 'text-2xl font-bold' }, 'Hydraulic Pump Configurator')
     ),
     React.createElement('div', { className: 'p-4 space-y-6' },
-      // Series Selection
       createSelectField('Series', config.series,
         [
           { value: '120', label: '120 Series' },
@@ -274,7 +296,6 @@ const PumpConfigurator = () => {
         }
       ),
 
-      // Only show other fields if series is selected
       config.series && React.createElement('div', { className: 'space-y-4' },
         createSelectField('Type', config.type, 
           [{ value: 'P', label: 'Pump (P)' }, { value: 'M', label: 'Motor (M)' }],
@@ -306,20 +327,29 @@ const PumpConfigurator = () => {
         createSelectField('Shaft End Cover', config.secCode, currentSeriesData.shaftEndCovers || [],
           (value) => setConfig({ ...config, secCode: value })
         ),
-        createSelectField('Gear Size', config.gearSize, currentSeriesData.gearHousings || [],
-          (value) => setConfig({ ...config, gearSize: value })
+        
+        // Primary section gear size
+        React.createElement('div', { className: 'border-t pt-4 mt-4' },
+          React.createElement('h4', { className: 'font-medium mb-4' }, 'Section 1 (Primary)'),
+          createSelectField('Gear Size - Section 1', config.gearSize, currentSeriesData.gearHousings || [],
+            (value) => setConfig({ ...config, gearSize: value })
+          )
         ),
+        
+        // Additional sections
+        config.pumpType !== 'single' && 
+          Array.from({ length: config.pumpType === 'tandem' ? 1 : config.pumpType === 'triple' ? 2 : 3 })
+            .map((_, index) => createAdditionalSectionFields(index)),
+
         createSelectField('Shaft Style', config.shaftStyle, currentSeriesData.shaftStyles || [],
           (value) => setConfig({ ...config, shaftStyle: value })
         ),
 
-        // Model Code Display
         config.type && React.createElement('div', { className: 'mt-8 p-4 bg-gray-100 rounded' },
           React.createElement('label', { className: 'block text-sm font-medium mb-2' }, 'Model Code:'),
           React.createElement('div', { className: 'font-mono text-lg' }, generateModelCode(config))
         ),
 
-        // BOM Display
         bom.length > 0 && React.createElement('div', { className: 'mt-8 p-4' },
           React.createElement('h3', { className: 'text-lg font-medium mb-4' }, 'Bill of Materials'),
           React.createElement('div', { className: 'table-container' },
@@ -342,21 +372,15 @@ const PumpConfigurator = () => {
               )
             )
           ),
-          React.createElement('div', { className: 'mt-4 flex gap-2' },
+          React.createElement('div', { className: 'mt-4' },
             React.createElement('button', {
               className: 'px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600',
               onClick: () => {
-                const parts = bom.map(item => item.partNumber).join('\n');
-                navigator.clipboard.writeText(parts);
+                const header = 'Part Number\tQuantity\n';
+                const rows = bom.map(item => `${item.partNumber}\t${item.quantity}`).join('\n');
+                navigator.clipboard.writeText(header + rows);
               }
-            }, 'Copy Part Numbers'),
-            React.createElement('button', {
-              className: 'px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600',
-              onClick: () => {
-                const text = bom.map(item => `${item.partNumber}\t${item.quantity}\t${item.description}`).join('\n');
-                navigator.clipboard.writeText(text);
-              }
-            }, 'Copy All')
+            }, 'Copy Part Numbers and Quantity')
           )
         )
       )
