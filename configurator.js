@@ -1,20 +1,5 @@
-// Add at the very top of configurator.js
 console.log('Loading configurator...');
 
-// Add this before loadSeriesData function
-async function checkFileAvailability() {
-  try {
-    const response = await fetch('120-series.md');
-    console.log('File check response:', response.status);
-    const text = await response.text();
-    console.log('First 100 characters of file:', text.substring(0, 100));
-  } catch (error) {
-    console.error('File check error:', error);
-  }
-}
-
-// Call this after window.onload = loadSeriesData;
-checkFileAvailability();// Markdown parser function
 async function parseMarkdownData(markdownText) {
   const sections = markdownText.split('\n## ');
   const data = {
@@ -89,11 +74,8 @@ let seriesData = null;
 
 async function loadSeriesData() {
   try {
-    // Use fetch instead of window.fs.readFile
     const response = await fetch('120-series.md');
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
-    }
+    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
     const fileContent = await response.text();
     seriesData = await parseMarkdownData(fileContent);
     initializeConfigurator();
@@ -108,7 +90,6 @@ function generateBOM(config) {
   
   const bom = [];
   
-  // Add shaft end cover
   const sec = seriesData.shaftEndCovers.find(sec => sec.code === config.secCode);
   if (sec) {
     bom.push({
@@ -118,7 +99,6 @@ function generateBOM(config) {
     });
   }
 
-  // Add gear housings
   const gearSizes = [config.gearSize];
   if (config.pumpType !== 'single' && config.additionalGearSizes) {
     gearSizes.push(...config.additionalGearSizes.filter(size => size));
@@ -135,7 +115,6 @@ function generateBOM(config) {
     }
   });
 
-  // Add drive gear set
   const driveGearKey = `${config.gearSize}-${config.shaftStyle}`;
   const driveGearPartNumber = seriesData.driveGearSets[config.shaftStyle]?.[driveGearKey];
   if (driveGearPartNumber && driveGearPartNumber !== 'N/A') {
@@ -146,7 +125,6 @@ function generateBOM(config) {
     });
   }
 
-  // Add idler gear sets
   if (config.pumpType !== 'single' && config.additionalGearSizes) {
     config.additionalGearSizes.forEach(size => {
       if (size) {
@@ -162,7 +140,6 @@ function generateBOM(config) {
     });
   }
 
-  // Add PEC Cover
   if (seriesData.pecCover) {
     bom.push({
       partNumber: seriesData.pecCover.partNumber,
@@ -170,19 +147,20 @@ function generateBOM(config) {
       description: `PEC Cover - ${seriesData.pecCover.description}`
     });
   }
-// Add this at the end of the generateBOM function, right before the return bom statement
-if (config.type && config.pumpType) {
-  const pumpTypeNumber = 
+
+  if (config.type && config.pumpType) {
+    const pumpTypeNumber = 
       config.pumpType === 'single' ? '1' :
       config.pumpType === 'tandem' ? '2' :
       config.pumpType === 'triple' ? '3' : '4';
-      
-  bom.push({
+    
+    bom.push({
       partNumber: `${config.type}120-${pumpTypeNumber}`,
       quantity: 1,
       description: 'Small Parts Kit'
-  });
-}
+    });
+  }
+
   return bom;
 }
 
@@ -287,61 +265,52 @@ const PumpConfigurator = () => {
       createSelectField('Shaft Style', config.shaftStyle, seriesData.shaftStyles,
         (value) => setConfig({ ...config, shaftStyle: value })
       ),
-      // Model Code Display
       config.type && React.createElement('div', { className: 'mt-8 p-4 bg-gray-100 rounded' },
         React.createElement('label', { className: 'block text-sm font-medium mb-2' }, 'Model Code:'),
         React.createElement('div', { className: 'font-mono text-lg' }, generateModelCode(config))
       ),
-      // BOM Display
-     // Replace the BOM display section in your PumpConfigurator component
-bom.length > 0 && React.createElement('div', { className: 'mt-8 p-4' },
-  React.createElement('h3', { className: 'text-lg font-medium mb-4' }, 'Bill of Materials'),
-  React.createElement('div', { className: 'table-container' },
-      React.createElement('table', { className: 'bom-table' },
-          React.createElement('thead', null,
+      bom.length > 0 && React.createElement('div', { className: 'mt-8 p-4' },
+        React.createElement('h3', { className: 'text-lg font-medium mb-4' }, 'Bill of Materials'),
+        React.createElement('div', { className: 'table-container' },
+          React.createElement('table', { className: 'bom-table' },
+            React.createElement('thead', null,
               React.createElement('tr', null,
-                  React.createElement('th', null, 'Part Number'),
-                  React.createElement('th', null, 'Qty'),
-                  React.createElement('th', null, 'Description')
+                React.createElement('th', null, 'Part Number'),
+                React.createElement('th', null, 'Qty'),
+                React.createElement('th', null, 'Description')
               )
-          ),
-          React.createElement('tbody', null,
+            ),
+            React.createElement('tbody', null,
               bom.map((item, index) =>
-                  React.createElement('tr', { key: index },
-                      React.createElement('td', { 
-                          className: 'selectable-cell',
-                          tabIndex: 0
-                      }, item.partNumber),
-                      React.createElement('td', { 
-                          className: 'selectable-cell',
-                          tabIndex: 0
-                      }, item.quantity),
-                      React.createElement('td', { 
-                          className: 'selectable-cell',
-                          tabIndex: 0
-                      }, item.description)
-                  )
+                React.createElement('tr', { key: index },
+                  React.createElement('td', { className: 'selectable-cell', tabIndex: 0 }, item.partNumber),
+                  React.createElement('td', { className: 'selectable-cell', tabIndex: 0 }, item.quantity),
+                  React.createElement('td', { className: 'selectable-cell', tabIndex: 0 }, item.description)
+                )
               )
+            )
           )
-      )
-  ),
-  React.createElement('div', { className: 'mt-4 flex gap-2' },
-      React.createElement('button', {
-          className: 'px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600',
-          onClick: () => {
+        ),
+        React.createElement('div', { className: 'mt-4 flex gap-2' },
+          React.createElement('button', {
+            className: 'px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600',
+            onClick: () => {
               const parts = bom.map(item => item.partNumber).join('\n');
               navigator.clipboard.writeText(parts);
-          }
-      }, 'Copy Part Numbers'),
-      React.createElement('button', {
-          className: 'px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600',
-          onClick: () => {
+            }
+          }, 'Copy Part Numbers'),
+          React.createElement('button', {
+            className: 'px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600',
+            onClick: () => {
               const text = bom.map(item => `${item.partNumber}\t${item.quantity}\t${item.description}`).join('\n');
               navigator.clipboard.writeText(text);
-          }
-      }, 'Copy All')
-  )
-)
+            }
+          }, 'Copy All')
+        )
+      )
+    )
+  );
+};
 
 function initializeConfigurator() {
   ReactDOM.render(React.createElement(PumpConfigurator), document.getElementById('root'));
