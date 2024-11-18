@@ -73,31 +73,35 @@ async function parseMarkdownData(markdownText) {
 }
 async function loadSeriesData() {
   try {
-    // Load both series files
-    const [response120, response151] = await Promise.all([
+    // Load all series files
+    const [response120, response131, response151] = await Promise.all([
       fetch('120-series.md'),
+      fetch('131-series.md'),
       fetch('p151-tables.md')
     ]);
 
-    if (!response120.ok || !response151.ok) {
+    if (!response120.ok || !response131.ok || !response151.ok) {
       throw new Error('Failed to load one or more series files');
     }
 
-    const [content120, content151] = await Promise.all([
+    const [content120, content131, content151] = await Promise.all([
       response120.text(),
+      response131.text(),
       response151.text()
     ]);
 
-    // Parse both series
+    // Parse all series
     seriesData = {
       '120': await parseMarkdownData(content120),
+      '131': await parseMarkdownData(content131),
       '151': await parseMarkdownData(content151)
     };
 
     initializeConfigurator();
   } catch (error) {
     console.error('Error loading series data:', error);
-    document.getElementById('root').innerHTML = `Error loading configurator data: ${error.message}. Make sure both series files are in the same folder.`;
+    document.getElementById('root').innerHTML = `Error loading configurator data: ${error.message}. 
+      Make sure all series files are in the same folder.`;
   }
 }
 
@@ -117,7 +121,7 @@ function generateBOM(config) {
     });
   }
 
-  // Add primary section gear housing
+  // Add gear housings
   const primaryHousing = currentSeriesData.gearHousings.find(h => h.code === config.gearSize);
   if (primaryHousing) {
     bom.push({
@@ -280,6 +284,7 @@ const PumpConfigurator = () => {
       createSelectField('Series', config.series,
         [
           { value: '120', label: '120 Series' },
+          { value: '131', label: '131 Series' },
           { value: '151', label: '151 Series' }
         ],
         (value) => {
@@ -376,9 +381,8 @@ const PumpConfigurator = () => {
             React.createElement('button', {
               className: 'px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600',
               onClick: () => {
-                const header = 'Part Number\tQuantity\n';
                 const rows = bom.map(item => `${item.partNumber}\t${item.quantity}`).join('\n');
-                navigator.clipboard.writeText(header + rows);
+                navigator.clipboard.writeText(rows);
               }
             }, 'Copy Part Numbers and Quantity')
           )
