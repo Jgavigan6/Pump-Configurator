@@ -333,23 +333,24 @@ const PumpConfigurator = () => {
           (value) => setConfig({ ...config, secCode: value })
         ),
         
-        // Primary section gear size
-        React.createElement('div', { className: 'border-t pt-4 mt-4' },
-          React.createElement('h4', { className: 'font-medium mb-4' }, 'Section 1 (Primary)'),
-          createSelectField('Gear Size - Section 1', config.gearSize, currentSeriesData.gearHousings || [],
-            (value) => setConfig({ ...config, gearSize: value })
-          )
-        ),
-        
-        // Additional sections
-        config.pumpType !== 'single' && 
-          Array.from({ length: config.pumpType === 'tandem' ? 1 : config.pumpType === 'triple' ? 2 : 3 })
-            .map((_, index) => createAdditionalSectionFields(index)),
+// Replace with this new code
+createSelectField('Gear Size', config.gearSize, currentSeriesData.gearHousings || [],
+  (value) => setConfig({ ...config, gearSize: value })
+),
 
-        createSelectField('Shaft Style', config.shaftStyle, currentSeriesData.shaftStyles || [],
-          (value) => setConfig({ ...config, shaftStyle: value })
-        ),
+createSelectField('Shaft Style', config.shaftStyle, currentSeriesData.shaftStyles || [],
+  (value) => setConfig({ ...config, shaftStyle: value })
+),
 
+// Additional sections only shown if pump type is not single
+config.pumpType && config.pumpType !== 'single' && React.createElement('div', 
+  { className: 'border-t pt-4 mt-4' },
+  React.createElement('h4', { 
+    className: 'font-medium mb-4 text-lg'
+  }, 'Additional Sections'),
+  Array.from({ length: config.pumpType === 'tandem' ? 1 : config.pumpType === 'triple' ? 2 : 3 })
+    .map((_, index) => createAdditionalSectionFields(index))
+),
         config.type && React.createElement('div', { className: 'mt-8 p-4 bg-gray-100 rounded' },
           React.createElement('label', { className: 'block text-sm font-medium mb-2' }, 'Model Code:'),
           React.createElement('div', { className: 'font-mono text-lg' }, generateModelCode(config))
