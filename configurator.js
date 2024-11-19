@@ -5,15 +5,12 @@ let seriesData = {};
 async function parseMarkdownData(markdownText) {
   const sections = markdownText.split('\n## ');
   const data = {
-    // Pump components
     shaftEndCovers: [],
     gearHousings: [],
     pecCovers: [],
-    // Motor components
     motorShaftEndCovers: [],
     motorGearHousings: [],
     motorPecCovers: [],
-    // Common components
     driveGearSets: {},
     idlerGearSets: [],
     shaftStyles: [],
@@ -29,62 +26,53 @@ async function parseMarkdownData(markdownText) {
     ]
   };
 
-  // Detect if we're in a subsection
-  let inPumpSection = false;
-  let inMotorSection = false;
-
+  let currentSection = '';
   sections.forEach(section => {
-    // Check for major section headers
-    if (section.includes('Pump Components')) {
-      inPumpSection = true;
-      inMotorSection = false;
-      return;
-    } else if (section.includes('Motor Components')) {
-      inPumpSection = false;
-      inMotorSection = true;
-      return;
-    }
+    // Debug logging
+    console.log('Processing section:', section.split('\n')[0]);
 
-    if (section.includes('Shaft End Cover (SEC)')) {
+    if (section.includes('### Shaft End Cover (SEC)')) {
       const lines = section.split('\n').filter(line => line.includes('|'));
       const parsedData = lines.slice(2).map(line => {
         const [code, partNumber, description] = line.split('|').slice(1, -1).map(s => s.trim());
         return { code, partNumber, description };
       });
 
-      if (inMotorSection) {
+      if (section.includes('Motors')) {
         data.motorShaftEndCovers = parsedData;
+        console.log('Added motor shaft end covers:', parsedData);
       } else {
         data.shaftEndCovers = parsedData;
+        console.log('Added pump shaft end covers:', parsedData);
       }
     }
-    else if (section.includes('P.E.C Cover')) {
+    else if (section.includes('### P.E.C Cover')) {
       const lines = section.split('\n').filter(line => line.includes('|'));
       const parsedData = lines.slice(2).map(line => {
         const [description, partNumber] = line.split('|').slice(1, -1).map(s => s.trim());
         return { description, partNumber };
       });
 
-      if (inMotorSection) {
+      if (section.includes('Motors')) {
         data.motorPecCovers = parsedData;
       } else {
         data.pecCovers = parsedData;
       }
     }
-    else if (section.includes('Gear Housing')) {
+    else if (section.includes('### Gear Housing')) {
       const lines = section.split('\n').filter(line => line.includes('|'));
       const parsedData = lines.slice(2).map(line => {
         const [code, partNumber, description] = line.split('|').slice(1, -1).map(s => s.trim());
         return { code, partNumber, description: description || 'Same as pump' };
       });
 
-      if (inMotorSection) {
+      if (section.includes('Motors')) {
         data.motorGearHousings = parsedData;
       } else {
         data.gearHousings = parsedData;
       }
     }
-    else if (section.includes('Drive Gear Sets') && !section.includes('Idler')) {
+    else if (section.includes('### Drive Gear Sets') && !section.includes('Idler')) {
       const headerMatch = section.match(/Code (\d+)/);
       if (headerMatch) {
         const styleCode = headerMatch[1];
@@ -102,7 +90,7 @@ async function parseMarkdownData(markdownText) {
         }
       }
     }
-    else if (section.includes('Idler Gear Sets')) {
+    else if (section.includes('### Idler Gear Sets')) {
       const lines = section.split('\n').filter(line => line.includes('|'));
       data.idlerGearSets = lines.slice(2).map(line => {
         const [code, partNumber, description] = line.split('|').slice(1, -1).map(s => s.trim());
@@ -111,26 +99,16 @@ async function parseMarkdownData(markdownText) {
     }
   });
 
-  console.log('Parsed data:', data); // Debug log
+  // Debug logging
+  console.log('Parsed data result:', {
+    shaftEndCovers: data.shaftEndCovers.length,
+    motorShaftEndCovers: data.motorShaftEndCovers.length,
+    gearHousings: data.gearHousings.length,
+    motorGearHousings: data.motorGearHousings.length
+  });
+
   return data;
 }
-async function loadSeriesData() {
-  try {
-    console.log('Starting to load series data...');
-    
-    // First, check if we can access the files
-    for (const filename of ['120-series.md', '131-series.md', 'p151-tables.md', 'fgp230-tables.md', 'fgp250-tables.md', 'fgp265-tables.md']) {
-      try {
-        const response = await fetch(filename);
-        console.log(`${filename} fetch response:`, response.status, response.ok);
-        if (!response.ok) {
-          console.error(`Failed to load ${filename}: ${response.status} ${response.statusText}`);
-        }
-      } catch (error) {
-        console.error(`Error fetching ${filename}:`, error);
-      }
-    }
-
     // Now try to load all files
     const [content120, content131, content151, content230, content250, content265] = await Promise.all([
       fetch('120-series.md').then(r => r.text()),
