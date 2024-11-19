@@ -31,7 +31,7 @@ async function parseMarkdownData(markdownText) {
 
   let currentSection = '';
   sections.forEach(section => {
-    // Determine if we're in pump or motor components section
+    // Check for component section headers
     if (section.includes('Pump Components')) {
       currentSection = 'pump';
       return;
@@ -108,12 +108,11 @@ async function parseMarkdownData(markdownText) {
       });
     }
   });
+
   return data;
 }
-
 async function loadSeriesData() {
   try {
-    // Load all series files
     const [response120, response131, response151, response230, response250, response265] = await Promise.all([
       fetch('120-series.md'),
       fetch('131-series.md'),
@@ -147,6 +146,7 @@ async function loadSeriesData() {
       '265': await parseMarkdownData(content265)
     };
 
+    console.log('Loaded series data:', seriesData); // Debug log
     initializeConfigurator();
   } catch (error) {
     console.error('Error loading series data:', error);
@@ -154,6 +154,7 @@ async function loadSeriesData() {
       Make sure all series files are in the same folder.`;
   }
 }
+
 function generateBOM(config) {
   if (!config.type || !config.series || !config.secCode || !config.gearSize || !config.shaftStyle || !config.pecSelection) return [];
   
@@ -229,15 +230,12 @@ function generateBOM(config) {
     });
   }
 
-  // Add PEC Cover based on selection, type, and series
+  // Add PEC Cover based on selection
   const selectedPec = config.pecSelection;
   if (selectedPec) {
-    let pecCovers;
-    if (is200Series && config.type === 'M') {
-      pecCovers = currentSeriesData.motorPecCovers;
-    } else {
-      pecCovers = currentSeriesData.pecCovers;
-    }
+    let pecCovers = is200Series && config.type === 'M' ? 
+      currentSeriesData.motorPecCovers : 
+      currentSeriesData.pecCovers;
     
     const pecCover = pecCovers?.find(pec => pec.partNumber === selectedPec);
     if (pecCover) {
@@ -297,7 +295,7 @@ const PumpConfigurator = () => {
     additionalGearSizes: [],
     portingCodes: [''],
     additionalPortingCodes: [],
-    pecSelection: '' // New state for PEC selection
+    pecSelection: ''
   });
 
   const [bom, setBom] = React.useState([]);
@@ -308,7 +306,7 @@ const PumpConfigurator = () => {
 
   const createEmptyOption = () => React.createElement('option', { value: '' }, '-- Select --');
 
-  const createSelectField = (label, value, options, onChange) => {
+  const createSelectField = (label, value, options, onChange, isPecSelect = false) => {
     return React.createElement('div', { className: 'mb-4' },
       React.createElement('label', { className: 'block text-sm font-medium mb-2' }, label),
       React.createElement('select', {
@@ -317,17 +315,23 @@ const PumpConfigurator = () => {
         onChange: (e) => onChange(e.target.value)
       }, [
         createEmptyOption(),
-        ...options.map(option => 
-          React.createElement('option', { 
-            value: option.value || option.code || option.partNumber,
-            key: option.value || option.code || option.partNumber
-          }, option.label || option.description || `${option.code} - ${option.description}`)
-        )
+        ...options.map(option => {
+          const optionValue = isPecSelect ? option.partNumber : (option.value || option.code);
+          const optionLabel = isPecSelect ? 
+            option.description :
+            option.label || (option.code ? `${option.code} - ${option.description}` : option.description);
+          
+          return React.createElement('option', { 
+            value: optionValue,
+            key: optionValue
+          }, optionLabel);
+        })
       ])
     );
   };
 
   const createAdditionalSectionFields = (index) => {
+    const components = getComponents();
     return React.createElement('div', { 
       key: `section-${index}`,
       className: 'border-t pt-4 mt-4'
@@ -337,7 +341,7 @@ const PumpConfigurator = () => {
       }, `Section ${index + 2}`),
       createSelectField(`Gear Size - Section ${index + 2}`, 
         config.additionalGearSizes[index] || '',
-        currentSeriesData.gearHousings || [],
+        components.gearHousings,
         (value) => {
           const newSizes = [...config.additionalGearSizes];
           newSizes[index] = value;
@@ -350,7 +354,6 @@ const PumpConfigurator = () => {
   const currentSeriesData = seriesData[config.series] || {};
   const is200Series = ['230', '250', '265'].includes(config.series);
 
-  // Get the appropriate components based on type and series
   const getComponents = () => {
     if (is200Series && config.type === 'M') {
       return {
@@ -367,6 +370,8 @@ const PumpConfigurator = () => {
   };
 
   const components = getComponents();
+
+  console.log('Current components:', components); // Debug log
 
   return React.createElement('div', { className: 'bg-white shadow rounded-lg max-w-4xl mx-auto' },
     React.createElement('div', { className: 'px-4 py-5 border-b border-gray-200' },
@@ -410,7 +415,7 @@ const PumpConfigurator = () => {
           })
         ),
 
-        config.type && [
+        config.type && React.createElement('div', { className: 'space-y-4' },
           createSelectField('Pump Type', config.pumpType,
             [
               { value: 'single', label: 'Single' },
@@ -432,27 +437,22 @@ const PumpConfigurator = () => {
             }
           ),
 
-          createSelectField('Rotation', config.rotation, 
-            currentSeriesData.rotationOptions || [],
+          createSelectField('Rotation', config.rotation, currentSeriesData.rotationOptions || [],
             (value) => setConfig({ ...config, rotation: value })
           ),
 
-          createSelectField('Shaft End Cover', config.secCode, 
-            components.shaftEndCovers,
+          createSelectField('Shaft End Cover', config.secCode, components.shaftEndCovers,
             (value) => setConfig({ ...config, secCode: value })
           ),
 
-          createSelectField('Gear Size', config.gearSize, 
-            components.gearHousings,
+          createSelectField('Gear Size', config.gearSize, components.gearHousings,
             (value) => setConfig({ ...config, gearSize: value })
           ),
 
-          createSelectField('Shaft Style', config.shaftStyle, 
-            currentSeriesData.shaftStyles || [],
+          createSelectField('Shaft Style', config.shaftStyle, currentSeriesData.shaftStyles || [],
             (value) => setConfig({ ...config, shaftStyle: value })
           ),
 
-          // Additional sections
           config.pumpType && config.pumpType !== 'single' && React.createElement('div', 
             { className: 'border-t pt-4 mt-4' },
             React.createElement('h4', { 
@@ -462,19 +462,15 @@ const PumpConfigurator = () => {
               .map((_, index) => createAdditionalSectionFields(index))
           ),
 
-          // PEC Selection
-          createSelectField('Port End Cover', config.pecSelection,
-            components.pecCovers,
-            (value) => setConfig({ ...config, pecSelection: value })
+          createSelectField('Port End Cover', config.pecSelection, components.pecCovers,
+            (value) => setConfig({ ...config, pecSelection: value }), true
           ),
 
-          // Model Code Display
-          config.type && config.pecSelection && React.createElement('div', { className: 'mt-8 p-4 bg-gray-100 rounded' },
+          config.pecSelection && React.createElement('div', { className: 'mt-8 p-4 bg-gray-100 rounded' },
             React.createElement('label', { className: 'block text-sm font-medium mb-2' }, 'Model Code:'),
             React.createElement('div', { className: 'font-mono text-lg' }, generateModelCode(config))
           ),
 
-          // BOM Display
           bom.length > 0 && React.createElement('div', { className: 'mt-8 p-4' },
             React.createElement('h3', { className: 'text-lg font-medium mb-4' }, 'Bill of Materials'),
             React.createElement('div', { className: 'table-container' },
@@ -507,7 +503,7 @@ const PumpConfigurator = () => {
               }, 'Copy Part Numbers and Quantity')
             )
           )
-        ]
+        )
       )
     )
   );
