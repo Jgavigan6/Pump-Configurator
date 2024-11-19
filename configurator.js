@@ -71,30 +71,41 @@ async function parseMarkdownData(markdownText) {
   });
   return data;
 }
+
 async function loadSeriesData() {
   try {
     // Load all series files
-    const [response120, response131, response151] = await Promise.all([
+    const [response120, response131, response151, response230, response250, response265] = await Promise.all([
       fetch('120-series.md'),
       fetch('131-series.md'),
-      fetch('p151-tables.md')
+      fetch('p151-tables.md'),
+      fetch('fgp230-tables.md'),
+      fetch('fgp250-tables.md'),
+      fetch('fgp265-tables.md')
     ]);
 
-    if (!response120.ok || !response131.ok || !response151.ok) {
+    if (!response120.ok || !response131.ok || !response151.ok || 
+        !response230.ok || !response250.ok || !response265.ok) {
       throw new Error('Failed to load one or more series files');
     }
 
-    const [content120, content131, content151] = await Promise.all([
+    const [content120, content131, content151, content230, content250, content265] = await Promise.all([
       response120.text(),
       response131.text(),
-      response151.text()
+      response151.text(),
+      response230.text(),
+      response250.text(),
+      response265.text()
     ]);
 
     // Parse all series
     seriesData = {
       '120': await parseMarkdownData(content120),
       '131': await parseMarkdownData(content131),
-      '151': await parseMarkdownData(content151)
+      '151': await parseMarkdownData(content151),
+      '230': await parseMarkdownData(content230),
+      '250': await parseMarkdownData(content250),
+      '265': await parseMarkdownData(content265)
     };
 
     initializeConfigurator();
@@ -104,15 +115,22 @@ async function loadSeriesData() {
       Make sure all series files are in the same folder.`;
   }
 }
-
 function generateBOM(config) {
   if (!config.type || !config.series || !config.secCode || !config.gearSize || !config.shaftStyle) return [];
   
   const currentSeriesData = seriesData[config.series] || {};
   const bom = [];
+
+  // Add shaft end cover - handle both pump and motor components
+  let sec;
+  if (config.type === 'P') {
+    sec = currentSeriesData.shaftEndCovers.find(sec => sec.code === config.secCode);
+  } else {
+    // For motors in 230, 250, 265 series, use motor-specific SEC
+    const motorSECs = currentSeriesData.motorShaftEndCovers || currentSeriesData.shaftEndCovers;
+    sec = motorSECs.find(sec => sec.code === config.secCode);
+  }
   
-  // Add shaft end cover
-  const sec = currentSeriesData.shaftEndCovers.find(sec => sec.code === config.secCode);
   if (sec) {
     bom.push({
       partNumber: sec.partNumber,
@@ -121,15 +139,32 @@ function generateBOM(config) {
     });
   }
 
-  // Add gear housings
-  const primaryHousing = currentSeriesData.gearHousings.find(h => h.code === config.gearSize);
-  if (primaryHousing) {
-    bom.push({
-      partNumber: primaryHousing.partNumber,
-      quantity: 1,
-      description: `Gear Housing (Primary) - ${primaryHousing.description}`
-    });
+  // Add gear housings - handle both pump and motor components
+  const gearSizes = [config.gearSize];
+  if (config.pumpType !== 'single' && config.additionalGearSizes) {
+    gearSizes.push(...config.additionalGearSizes.filter(size => size));
   }
+  
+  gearSizes.forEach((size, index) => {
+    let housing;
+    if (config.type === 'P') {
+      housing = currentSeriesData.gearHousings.find(h => h.code === size);
+    } else {
+      // For motors in 230, 250, 265 series, use motor-specific housing
+      const motorHousings = currentSeriesData.motorGearHousings || currentSeriesData.gearHousings;
+      housing = motorHousings.find(h => h.code === size);
+    }
+
+    if (housing) {
+      bom.push({
+        partNumber: housing.partNumber,
+        quantity: 1,
+        description: index === 0 ? 
+          `Gear Housing (Primary) - ${housing.description}` :
+          `Gear Housing (Section ${index + 1}) - ${housing.description}`
+      });
+    }
+  });
 
   // Add drive gear set
   const driveGearKey = `${config.gearSize}-${config.shaftStyle}`;
@@ -142,21 +177,10 @@ function generateBOM(config) {
     });
   }
 
-  // Add additional sections gear housings and idler sets
+  // Add idler gear sets for additional sections
   if (config.pumpType !== 'single' && config.additionalGearSizes) {
     config.additionalGearSizes.forEach((size, index) => {
       if (size) {
-        // Add gear housing for additional section
-        const housing = currentSeriesData.gearHousings.find(h => h.code === size);
-        if (housing) {
-          bom.push({
-            partNumber: housing.partNumber,
-            quantity: 1,
-            description: `Gear Housing (Section ${index + 2}) - ${housing.description}`
-          });
-        }
-
-        // Add idler gear set for additional section
         const idlerSet = currentSeriesData.idlerGearSets.find(set => set.code === size);
         if (idlerSet) {
           bom.push({
@@ -169,12 +193,20 @@ function generateBOM(config) {
     });
   }
 
-  // Add PEC Cover
-  if (currentSeriesData.pecCover) {
+  // Add PEC Cover - handle both pump and motor components
+  let pecCover;
+  if (config.type === 'P') {
+    pecCover = currentSeriesData.pecCover;
+  } else {
+    // For motors in 230, 250, 265 series, use motor-specific PEC
+    pecCover = currentSeriesData.motorPecCover || currentSeriesData.pecCover;
+  }
+
+  if (pecCover) {
     bom.push({
-      partNumber: currentSeriesData.pecCover.partNumber,
+      partNumber: pecCover.partNumber,
       quantity: 1,
-      description: `PEC Cover - ${currentSeriesData.pecCover.description}`
+      description: `PEC Cover - ${pecCover.description}`
     });
   }
 
@@ -285,7 +317,10 @@ const PumpConfigurator = () => {
         [
           { value: '120', label: '120 Series' },
           { value: '131', label: '131 Series' },
-          { value: '151', label: '151 Series' }
+          { value: '151', label: '151 Series' },
+          { value: '230', label: '230 Series' },
+          { value: '250', label: '250 Series' },
+          { value: '265', label: '265 Series' }
         ],
         (value) => {
           setConfig({
@@ -329,33 +364,39 @@ const PumpConfigurator = () => {
         createSelectField('Rotation', config.rotation, currentSeriesData.rotationOptions || [],
           (value) => setConfig({ ...config, rotation: value })
         ),
-        createSelectField('Shaft End Cover', config.secCode, currentSeriesData.shaftEndCovers || [],
+        createSelectField('Shaft End Cover', config.secCode, 
+          config.type === 'M' && currentSeriesData.motorShaftEndCovers ? 
+            currentSeriesData.motorShaftEndCovers : currentSeriesData.shaftEndCovers || [],
           (value) => setConfig({ ...config, secCode: value })
         ),
         
-// Replace with this new code
-createSelectField('Gear Size', config.gearSize, currentSeriesData.gearHousings || [],
-  (value) => setConfig({ ...config, gearSize: value })
-),
+        createSelectField('Gear Size', config.gearSize, 
+          config.type === 'M' && currentSeriesData.motorGearHousings ? 
+            currentSeriesData.motorGearHousings : currentSeriesData.gearHousings || [],
+          (value) => setConfig({ ...config, gearSize: value })
+        ),
 
-createSelectField('Shaft Style', config.shaftStyle, currentSeriesData.shaftStyles || [],
-  (value) => setConfig({ ...config, shaftStyle: value })
-),
+        createSelectField('Shaft Style', config.shaftStyle, currentSeriesData.shaftStyles || [],
+          (value) => setConfig({ ...config, shaftStyle: value })
+        ),
 
-// Additional sections only shown if pump type is not single
-config.pumpType && config.pumpType !== 'single' && React.createElement('div', 
-  { className: 'border-t pt-4 mt-4' },
-  React.createElement('h4', { 
-    className: 'font-medium mb-4 text-lg'
-  }, 'Additional Sections'),
-  Array.from({ length: config.pumpType === 'tandem' ? 1 : config.pumpType === 'triple' ? 2 : 3 })
-    .map((_, index) => createAdditionalSectionFields(index))
-),
+        // Additional sections only shown if pump type is not single
+        config.pumpType && config.pumpType !== 'single' && React.createElement('div', 
+          { className: 'border-t pt-4 mt-4' },
+          React.createElement('h4', { 
+            className: 'font-medium mb-4 text-lg'
+          }, 'Additional Sections'),
+          Array.from({ length: config.pumpType === 'tandem' ? 1 : config.pumpType === 'triple' ? 2 : 3 })
+            .map((_, index) => createAdditionalSectionFields(index))
+        ),
+
+        // Model Code Display
         config.type && React.createElement('div', { className: 'mt-8 p-4 bg-gray-100 rounded' },
           React.createElement('label', { className: 'block text-sm font-medium mb-2' }, 'Model Code:'),
           React.createElement('div', { className: 'font-mono text-lg' }, generateModelCode(config))
         ),
 
+        // BOM Display
         bom.length > 0 && React.createElement('div', { className: 'mt-8 p-4' },
           React.createElement('h3', { className: 'text-lg font-medium mb-4' }, 'Bill of Materials'),
           React.createElement('div', { className: 'table-container' },
