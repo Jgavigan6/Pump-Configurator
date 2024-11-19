@@ -119,23 +119,50 @@ async function loadSeriesData() {
   try {
     console.log('Starting to load series data...');
     
-    const responses = await Promise.all([
-      fetch('120-series.md'),
-      fetch('131-series.md'),
-      fetch('p151-tables.md'),
-      fetch('fgp230-tables.md'),
-      fetch('fgp250-tables.md'),
-      fetch('fgp265-tables.md')
-    ]);
+    // List all files being loaded
+    const filesList = [
+      '120-series.md',
+      '131-series.md',
+      'p151-tables.md',
+      'fgp230-tables.md',
+      'fgp250-tables.md',
+      'fgp265-tables.md'
+    ];
 
-    // Check all responses
+    console.log('Attempting to load files:', filesList);
+
+    // Try to load each file individually and log the result
+    for (const filename of filesList) {
+      try {
+        const response = await fetch(filename);
+        console.log(`${filename}: ${response.status} ${response.ok}`);
+        if (!response.ok) {
+          console.error(`Failed to load ${filename}: ${response.statusText}`);
+        } else {
+          const text = await response.text();
+          console.log(`${filename} content length:`, text.length);
+        }
+      } catch (error) {
+        console.error(`Error loading ${filename}:`, error);
+      }
+    }
+
+    // Now try to load all files together
+    const responses = await Promise.all(filesList.map(file => fetch(file)));
+    
+    // Check each response
     responses.forEach((response, index) => {
-      const files = ['120-series.md', '131-series.md', 'p151-tables.md', 'fgp230-tables.md', 'fgp250-tables.md', 'fgp265-tables.md'];
-      console.log(`${files[index]} fetch response:`, response.status, response.ok);
+      console.log(`${filesList[index]} main load:`, response.status, response.ok);
     });
 
     const contents = await Promise.all(responses.map(r => r.text()));
 
+    // Log the contents length for each file
+    contents.forEach((content, index) => {
+      console.log(`${filesList[index]} content length:`, content.length);
+    });
+
+    // Parse each file and store the results
     seriesData = {
       '120': await parseMarkdownData(contents[0]),
       '131': await parseMarkdownData(contents[1]),
@@ -145,7 +172,8 @@ async function loadSeriesData() {
       '265': await parseMarkdownData(contents[5])
     };
 
-    console.log('Loaded all series data');
+    console.log('Loaded series data:', seriesData);
+
     initializeConfigurator();
   } catch (error) {
     console.error('Error in loadSeriesData:', error);
