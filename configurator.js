@@ -116,39 +116,52 @@ async function parseMarkdownData(markdownText) {
 }
 async function loadSeriesData() {
   try {
-    // Load all series files
-    const responses = await Promise.all([
-      fetch('120-series.md'),
-      fetch('131-series.md'),
-      fetch('p151-tables.md'),
-      fetch('fgp230-tables.md'),
-      fetch('fgp250-tables.md'),
-      fetch('fgp265-tables.md')
-    ]);
-
-    // Check if all responses are ok
-    const failedResponses = responses.filter(response => !response.ok);
-    if (failedResponses.length > 0) {
-      throw new Error('Failed to load one or more series files');
+    console.log('Starting to load series data...');
+    
+    // First, check if we can access the files
+    for (const filename of ['120-series.md', '131-series.md', 'p151-tables.md', 'fgp230-tables.md', 'fgp250-tables.md', 'fgp265-tables.md']) {
+      try {
+        const response = await fetch(filename);
+        console.log(`${filename} fetch response:`, response.status, response.ok);
+        if (!response.ok) {
+          console.error(`Failed to load ${filename}: ${response.status} ${response.statusText}`);
+        }
+      } catch (error) {
+        console.error(`Error fetching ${filename}:`, error);
+      }
     }
 
-    // Get text content from all responses
-    const contents = await Promise.all(responses.map(response => response.text()));
+    // Now try to load all files
+    const [content120, content131, content151, content230, content250, content265] = await Promise.all([
+      fetch('120-series.md').then(r => r.text()),
+      fetch('131-series.md').then(r => r.text()),
+      fetch('p151-tables.md').then(r => r.text()),
+      fetch('fgp230-tables.md').then(r => r.text()),
+      fetch('fgp250-tables.md').then(r => r.text()),
+      fetch('fgp265-tables.md').then(r => r.text())
+    ]);
 
-    // Parse all series
+    // Parse each file
     seriesData = {
-      '120': await parseMarkdownData(contents[0]),
-      '131': await parseMarkdownData(contents[1]),
-      '151': await parseMarkdownData(contents[2]),
-      '230': await parseMarkdownData(contents[3]),
-      '250': await parseMarkdownData(contents[4]),
-      '265': await parseMarkdownData(contents[5])
+      '120': await parseMarkdownData(content120),
+      '131': await parseMarkdownData(content131),
+      '151': await parseMarkdownData(content151),
+      '230': await parseMarkdownData(content230),
+      '250': await parseMarkdownData(content250),
+      '265': await parseMarkdownData(content265)
     };
 
-    console.log('Loaded seriesData:', seriesData); // Debug log
+    console.log('Loaded series data:', seriesData);
+    
+    // Check if the 230 series data is properly loaded
+    if (seriesData['230']) {
+      console.log('230 Series Shaft End Covers:', seriesData['230'].shaftEndCovers);
+      console.log('230 Series Motor Shaft End Covers:', seriesData['230'].motorShaftEndCovers);
+    }
+
     initializeConfigurator();
   } catch (error) {
-    console.error('Error loading series data:', error);
+    console.error('Error in loadSeriesData:', error);
     document.getElementById('root').innerHTML = `Error loading configurator data: ${error.message}. 
       Make sure all series files are in the same folder.`;
   }
