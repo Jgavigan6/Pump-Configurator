@@ -30,7 +30,8 @@ async function parseMarkdownData(markdownText) {
   sections.forEach(section => {
     console.log('Processing section:', section.split('\n')[0]);
 
-    if (section.includes('### Shaft End Cover (SEC)')) {
+    // Handle both ### and standard sections
+    if (section.includes('Shaft End Cover (SEC)') || section.includes('### Shaft End Cover (SEC)')) {
       const lines = section.split('\n').filter(line => line.includes('|'));
       const parsedData = lines.slice(2).map(line => {
         const [code, partNumber, description] = line.split('|').slice(1, -1).map(s => s.trim());
@@ -119,50 +120,35 @@ async function loadSeriesData() {
   try {
     console.log('Starting to load series data...');
     
-    // List all files being loaded
+    // Updated file names to match your actual files
     const filesList = [
       '120-series.md',
       '131-series.md',
       'p151-tables.md',
-      'fgp230-tables.md',
-      'fgp250-tables.md',
-      'fgp265-tables.md'
+      'fgp230-tables.md', // Changed from fgp230-tables.md
+      'fgp250-tables.md', // Changed from fgp250-tables.md
+      'fgp265-tables.md'  // Changed from fgp265-tables.md
     ];
 
-    console.log('Attempting to load files:', filesList);
-
-    // Try to load each file individually and log the result
+    // Debug each file load
     for (const filename of filesList) {
       try {
         const response = await fetch(filename);
-        console.log(`${filename}: ${response.status} ${response.ok}`);
+        console.log(`Loading ${filename}:`, response.status, response.ok);
         if (!response.ok) {
           console.error(`Failed to load ${filename}: ${response.statusText}`);
         } else {
           const text = await response.text();
-          console.log(`${filename} content length:`, text.length);
+          console.log(`${filename} content:`, text.substring(0, 100));
         }
       } catch (error) {
         console.error(`Error loading ${filename}:`, error);
       }
     }
 
-    // Now try to load all files together
-    const responses = await Promise.all(filesList.map(file => fetch(file)));
-    
-    // Check each response
-    responses.forEach((response, index) => {
-      console.log(`${filesList[index]} main load:`, response.status, response.ok);
-    });
+    const contents = await Promise.all(filesList.map(file => fetch(file).then(r => r.text())));
 
-    const contents = await Promise.all(responses.map(r => r.text()));
-
-    // Log the contents length for each file
-    contents.forEach((content, index) => {
-      console.log(`${filesList[index]} content length:`, content.length);
-    });
-
-    // Parse each file and store the results
+    // Parse and store the data with proper series codes
     seriesData = {
       '120': await parseMarkdownData(contents[0]),
       '131': await parseMarkdownData(contents[1]),
@@ -172,7 +158,14 @@ async function loadSeriesData() {
       '265': await parseMarkdownData(contents[5])
     };
 
-    console.log('Loaded series data:', seriesData);
+    // Debug the parsed data
+    Object.entries(seriesData).forEach(([series, data]) => {
+      console.log(`${series} Series data loaded:`, {
+        shaftEndCovers: data.shaftEndCovers?.length || 0,
+        gearHousings: data.gearHousings?.length || 0,
+        shaftStyles: data.shaftStyles?.length || 0
+      });
+    });
 
     initializeConfigurator();
   } catch (error) {
