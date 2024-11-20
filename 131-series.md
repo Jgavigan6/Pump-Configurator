@@ -39,6 +39,7 @@
 | 20-36 | 0330-027-100 |
 
 ## Drive Gear Sets - 131 Series Code 41 (7/8" Keyed)
+Shaft Key: 0425-122-200
 | Code | Part Number |
 |------|-------------|
 | 05-41 | N/A |
@@ -50,6 +51,7 @@
 | 20-41 | 0330-037-100 |
 
 ## Drive Gear Sets - 131 Series Code 54 (1.00" Keyed)
+Shaft Key: 0425-130-200
 | Code | Part Number |
 |------|-------------|
 | 05-54 | N/A |
@@ -61,6 +63,7 @@
 | 20-54 | 0330-054-100 |
 
 ## Drive Gear Sets - 131 Series Code 76 (Type II 1.00" Keyed)
+Shaft Key: 0425-130-200
 | Code | Part Number |
 |------|-------------|
 | 05-76 | N/A |
@@ -81,3 +84,36 @@
 | 15 | 0330-015-100 | 1-1/2"- 2.95 C.I.D. |
 | 17 | 0330-016-100 | 1-3/4"- 3.44 C.I.D. |
 | 20 | 0330-017-100 | 2"- 3.94 C.I.D. |
+
+## Bearing Carriers - 131 Series
+| Description | Part Number | Common Number |
+|-------------|-------------|---------------|
+| M131 Blank Bearing Carrier | 0430-031-501 | (312-7740-100) |
+| P131 Common Suction | Not Available yet | (312-7723-100) |
+
+## Motor Components
+
+## Fasteners - Single Units
+| Gear Width Code | Part Number |
+|-----------------|-------------|
+| 05 | 391-1401-024 |
+| 07 | 391-1401-069 |
+| 10 | 391-1401-069 |
+| 12 | 391-1401-025 |
+| 15 | 391-1401-025 |
+| 17 | 391-1401-089 |
+| 20 | 391-1401-089 |
+
+## Fasteners - Multi-Units
+
+### Doubles
+| Gear Width Condition | Part Number |
+|--------------------|-------------|
+| Less than 3.25" of Gear | 391-1425-175 |
+| More than 3.25" of Gear | 391-1425-177 |
+
+### Triples/Quads
+| Gear Width Condition | Part Number |
+|--------------------|-------------|
+| Less than 4.75" of Gear | 391-1425-177 |
+| More than 4.75" of Gear | 391-1425-179 |

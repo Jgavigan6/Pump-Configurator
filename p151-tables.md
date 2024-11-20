@@ -44,6 +44,7 @@
 | 25-18 | 0350-026-100 |
 
 ## Drive Gear Sets - 151 Series Code 22 (1-1/4" Keyed)
+Shaft Key: 0425-129-200
 | Code | Part Number |
 |------|-------------|
 | 05-22 | N/A |
@@ -70,6 +71,7 @@
 | 25-36 | 0350-076-100 |
 
 ## Drive Gear Sets - 151 Series Code 54 (1.00" Keyed)
+Shaft Key: 0425-130-200
 | Code | Part Number |
 |------|-------------|
 | 05-54 | N/A |
@@ -120,3 +122,38 @@
 | 20 | 0350-017-100 | 2"- 5.10 C.I.D. |
 | 22 | 0350-018-100 | 2-1/4"- 5.73 C.I.D. |
 | 25 | 0350-019-100 | 2-1/2"- 6.37 C.I.D. |
+
+## Bearing Carriers - 151 Series
+| Description | Part Number | Common Number |
+|-------------|-------------|---------------|
+| M151 Blank Bearing Carrier | 0450-031-501 | (313-7740-100) |
+| P151 Common Suction Bearing Carrier | 0450-030-501 | (313-7723-100) |
+
+### Idler Gear Sets - 151 Series
+
+## Fasteners - Single Units
+| Gear Width Code | Part Number |
+|-----------------|-------------|
+| 05 | 391-1401-024 |
+| 07 | 391-1401-069 |
+| 10 | 391-1401-069 |
+| 12 | 391-1401-025 |
+| 15 | 391-1401-025 |
+| 17 | 391-1401-089 |
+| 20 | 391-1401-089 |
+| 22 | 391-1401-076 |
+| 25 | 391-1401-076 |
+
+## Fasteners - Multi-Units
+
+### Doubles
+| Gear Width Condition | Part Number |
+|--------------------|-------------|
+| Less than 3.25" of Gear | 391-1425-175 |
+| More than 3.25" of Gear | 391-1425-177 |
+
+### Triples/Quads
+| Gear Width Condition | Part Number |
+|--------------------|-------------|
+| Less than 4.75" of Gear | 391-1425-177 |
+| More than 4.75" of Gear | 391-1425-179 |

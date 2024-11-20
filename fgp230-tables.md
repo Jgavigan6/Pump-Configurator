@@ -51,6 +51,7 @@
 | 20-09 | 0333-067-100 |
 
 ### Drive Gear Sets - 230 Series Code 54 (1.00" Keyed)
+Shaft Key: 425-132-200
 | Code | Part Number |
 |------|-------------|
 | 05-54 | N/A |
@@ -71,6 +72,15 @@
 | 15 | 0333-015-100 | 1-1/2"- 2.95 C.I.D. |
 | 17 | 0333-016-100 | 1-3/4"- 3.44 C.I.D. |
 | 20 | 0333-017-100 | 2.00"- 3.94 C.I.D. |
+
+## Bearing Carriers - 230 Series
+| Description | Part Number | Common Number |
+|-------------|-------------|---------------|
+| P230 Common Single Outlet Blank Bearing Carrier | 0433-080-500 | (324-7600-100) |
+| M230 Common Dual Outlet Blank Bearing Carrier | 0433-082-500 | (324-7700-100) |
+| P230 Common Dual Outlet Blank Bearing Carrier | 0433-030-500 | (324-7800-100) |
+
+### Gear Housing - 230 Series Motors
 
 ## Motor Components
 
@@ -96,3 +106,28 @@
 | 15 | 0433-074-500 | 1-1/2"- 2.95 C.I.D. |
 | 17 | 0433-075-500 | 1-3/4"- 3.44 C.I.D. |
 | 20 | 0433-076-500 | 2.00"- 3.94 C.I.D. |
+
+## Fasteners - Single Units
+| Gear Width Code | Part Number |
+|-----------------|-------------|
+| 05 | 391-1401-023 |
+| 07 | 391-1401-024 |
+| 10 | 391-1401-024 |
+| 12 | 391-1401-069 |
+| 15 | 391-1401-069 |
+| 17 | 391-1401-025 |
+| 20 | 391-1401-025 |
+
+## Fasteners - Multi-Units
+
+### Doubles
+| Gear Width Condition | Part Number |
+|--------------------|-------------|
+| Less than 3.00" of Gear | 391-1425-175 |
+| More than 3.00" of Gear | 391-1425-177 |
+
+### Triples/Quads
+| Gear Width Condition | Part Number |
+|--------------------|-------------|
+| Less than 4.25" of Gear | 391-1425-177 |
+| More than 4.25" of Gear | 391-1425-179 |

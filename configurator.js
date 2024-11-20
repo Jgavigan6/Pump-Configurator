@@ -18,6 +18,10 @@ async function parseMarkdownData(markdownText) {
     motorPecCovers: [],
     driveGearSets: {},
     idlerGearSets: [],
+    bearingCarriers: [],
+    fastenersSingle: [],
+    fastenersDoubles: [],
+    fastenersTripleQuad: [],
     shaftStyles: [],
     rotationOptions: [
       { code: '1', description: 'CW' },
@@ -109,14 +113,38 @@ async function parseMarkdownData(markdownText) {
       });
       console.log('Added idler gear sets:', data.idlerGearSets);
     }
-  });
-
-  console.log('Parsed data summary:', {
-    shaftEndCovers: data.shaftEndCovers.length,
-    motorShaftEndCovers: data.motorShaftEndCovers.length,
-    gearHousings: data.gearHousings.length,
-    motorGearHousings: data.motorGearHousings.length,
-    shaftStyles: data.shaftStyles.length
+    else if (section.includes('Bearing Carriers')) {
+      const lines = section.split('\n').filter(line => line.includes('|'));
+      data.bearingCarriers = lines.slice(2).map(line => {
+        const [description, partNumber, commonNumber] = line.split('|').slice(1, -1).map(s => s.trim());
+        return { description, partNumber, commonNumber };
+      });
+      console.log('Added bearing carriers:', data.bearingCarriers);
+    }
+    else if (section.includes('Fasteners - Single Units') && !section.includes('Multi')) {
+      const lines = section.split('\n').filter(line => line.includes('|'));
+      data.fastenersSingle = lines.slice(2).map(line => {
+        const [code, partNumber] = line.split('|').slice(1, -1).map(s => s.trim());
+        return { code, partNumber };
+      });
+      console.log('Added single unit fasteners:', data.fastenersSingle);
+    }
+    else if (section.includes('Doubles')) {
+      const lines = section.split('\n').filter(line => line.includes('|'));
+      data.fastenersDoubles = lines.slice(2).map(line => {
+        const [condition, partNumber] = line.split('|').slice(1, -1).map(s => s.trim());
+        return { condition, partNumber };
+      });
+      console.log('Added double unit fasteners:', data.fastenersDoubles);
+    }
+    else if (section.includes('Triples/Quads')) {
+      const lines = section.split('\n').filter(line => line.includes('|'));
+      data.fastenersTripleQuad = lines.slice(2).map(line => {
+        const [condition, partNumber] = line.split('|').slice(1, -1).map(s => s.trim());
+        return { condition, partNumber };
+      });
+      console.log('Added triple/quad unit fasteners:', data.fastenersTripleQuad);
+    }
   });
 
   return data;
@@ -125,11 +153,12 @@ async function loadSeriesData() {
   try {
     console.log('Starting to load series data...');
     
-    // List all files being loaded
     const filesList = [
       '120-series.md',
       '131-series.md',
       'p151-tables.md',
+      'p176-tables.md',
+      'p215-tables.md',
       'fgp230-tables.md',
       'fgp250-tables.md',
       'fgp265-tables.md'
@@ -156,21 +185,14 @@ async function loadSeriesData() {
       '120': await parseMarkdownData(contents[0]),
       '131': await parseMarkdownData(contents[1]),
       '151': await parseMarkdownData(contents[2]),
-      '230': await parseMarkdownData(contents[3]),
-      '250': await parseMarkdownData(contents[4]),
-      '265': await parseMarkdownData(contents[5])
+      '176': await parseMarkdownData(contents[3]),
+      '215': await parseMarkdownData(contents[4]),
+      '230': await parseMarkdownData(contents[5]),
+      '250': await parseMarkdownData(contents[6]),
+      '265': await parseMarkdownData(contents[7])
     };
 
-    // Debug loaded data
-    Object.entries(seriesData).forEach(([series, data]) => {
-      console.log(`${series} Series loaded:`, {
-        shaftEndCovers: data.shaftEndCovers?.length || 0,
-        gearHousings: data.gearHousings?.length || 0,
-        shaftStyles: data.shaftStyles?.length || 0,
-        pecCovers: data.pecCovers?.length || 0
-      });
-    });
-
+    console.log('Series data loaded:', seriesData);
     initializeConfigurator();
   } catch (error) {
     console.error('Error in loadSeriesData:', error);
@@ -179,6 +201,98 @@ async function loadSeriesData() {
   }
 }
 
+function calculateTotalGearWidth(config, currentSeriesData) {
+  let totalWidth = 0;
+  
+  // Get primary gear width
+  const primaryGear = currentSeriesData.gearHousings.find(h => h.code === config.gearSize);
+  if (primaryGear) {
+    const widthMatch = primaryGear.description.match(/(\d+(\.\d+)?)"?-/);
+    if (widthMatch) {
+      totalWidth += parseFloat(widthMatch[1]);
+    }
+  }
+
+  // Add additional sections if present
+  if (config.additionalGearSizes) {
+    config.additionalGearSizes.forEach(size => {
+      const gear = currentSeriesData.gearHousings.find(h => h.code === size);
+      if (gear) {
+        const widthMatch = gear.description.match(/(\d+(\.\d+)?)"?-/);
+        if (widthMatch) {
+          totalWidth += parseFloat(widthMatch[1]);
+        }
+      }
+    });
+  }
+
+  return totalWidth;
+}
+
+function determineFastenerPartNumber(config, currentSeriesData, totalGearWidth) {
+  if (config.pumpType === 'single') {
+    // For single units
+    const fastener = currentSeriesData.fastenersSingle?.find(f => f.code === config.gearSize);
+    return fastener?.partNumber;
+  } else {
+    // For multi units
+    const fastenersMulti = config.pumpType === 'tandem' ? 
+      currentSeriesData.fastenersDoubles : 
+      currentSeriesData.fastenersTripleQuad;
+
+    if (!fastenersMulti) return null;
+
+    // Find appropriate fastener based on total gear width
+    return fastenersMulti.find(f => {
+      const condition = f.condition.toLowerCase();
+      const widthLimit = parseFloat(condition.match(/\d+(\.\d+)?/)[0]);
+      
+      if (condition.includes('less than')) {
+        return totalGearWidth < widthLimit;
+      } else {
+        return totalGearWidth >= widthLimit;
+      }
+    })?.partNumber;
+  }
+}
+
+function determineBearingCarrierQty(pumpType) {
+  switch (pumpType) {
+    case 'single':
+      return 0;
+    case 'tandem':
+      return 1;
+    case 'triple':
+      return 2;
+    case 'quad':
+      return 3;
+    default:
+      return 0;
+  }
+}
+
+function generateModelCode(config) {
+  if (!config.type || !config.series || !config.rotation || !config.secCode || 
+      !config.gearSize || !config.shaftStyle) {
+    console.warn('Missing required fields for model code generation');
+    return '';
+  }
+  
+  let code = `${config.type}${config.series}A${config.rotation}${config.secCode}`;
+  code += config.portingCodes[0] || 'XXXX';
+  code += `${config.gearSize}-${config.shaftStyle}`;
+  
+  if (config.pumpType !== 'single' && config.additionalGearSizes.length > 0) {
+    config.additionalGearSizes.forEach((size, index) => {
+      if (size) {
+        code += (config.additionalPortingCodes[index] || 'XXXX');
+        code += `${size}-${index + 1}`;
+      }
+    });
+  }
+  
+  return code;
+}
 function generateBOM(config) {
   if (!config.type || !config.series || !config.secCode || !config.gearSize || !config.shaftStyle) return [];
   
@@ -197,10 +311,6 @@ function generateBOM(config) {
     currentSeriesData.motorShaftEndCovers : 
     currentSeriesData.shaftEndCovers;
   
-  if (!secArray || secArray.length === 0) {
-    console.warn('No shaft end covers found for', config.series, config.type);
-  }
-
   const sec = secArray?.find(s => s.code === config.secCode);
   if (sec) {
     bom.push({
@@ -221,10 +331,6 @@ function generateBOM(config) {
       currentSeriesData.motorGearHousings : 
       currentSeriesData.gearHousings;
     
-    if (!gearArray || gearArray.length === 0) {
-      console.warn('No gear housings found for', config.series, config.type);
-    }
-
     const housing = gearArray?.find(h => h.code === size);
     if (housing) {
       bom.push({
@@ -271,10 +377,6 @@ function generateBOM(config) {
       currentSeriesData.motorPecCovers : 
       currentSeriesData.pecCovers;
     
-    if (!pecArray || pecArray.length === 0) {
-      console.warn('No PEC covers found for', config.series, config.type);
-    }
-
     const pecCover = pecArray?.find(pec => pec.partNumber === config.pecSelection);
     if (pecCover) {
       bom.push({
@@ -283,6 +385,33 @@ function generateBOM(config) {
         description: `PEC Cover - ${pecCover.description}`
       });
     }
+  }
+
+  // Add bearing carrier if pump type is not single
+  if (config.pumpType !== 'single' && config.bearingCarrierSelection) {
+    const qty = determineBearingCarrierQty(config.pumpType);
+    const bearingCarrier = currentSeriesData.bearingCarriers?.find(
+      bc => bc.partNumber === config.bearingCarrierSelection
+    );
+    if (bearingCarrier && qty > 0) {
+      bom.push({
+        partNumber: bearingCarrier.partNumber,
+        quantity: qty,
+        description: `Bearing Carrier - ${bearingCarrier.description}`
+      });
+    }
+  }
+
+  // Add fasteners
+  const totalGearWidth = calculateTotalGearWidth(config, currentSeriesData);
+  const fastenerPartNumber = determineFastenerPartNumber(config, currentSeriesData, totalGearWidth);
+  
+  if (fastenerPartNumber) {
+    bom.push({
+      partNumber: fastenerPartNumber,
+      quantity: config.series === '176' ? 8 : 4,
+      description: 'Fastener'
+    });
   }
 
   // Add small parts kit
@@ -302,28 +431,6 @@ function generateBOM(config) {
   return bom;
 }
 
-function generateModelCode(config) {
-  if (!config.type || !config.series || !config.rotation || !config.secCode || 
-      !config.gearSize || !config.shaftStyle) {
-    console.warn('Missing required fields for model code generation');
-    return '';
-  }
-  
-  let code = `${config.type}${config.series}A${config.rotation}${config.secCode}`;
-  code += config.portingCodes[0] || 'XXXX';
-  code += `${config.gearSize}-${config.shaftStyle}`;
-  
-  if (config.pumpType !== 'single' && config.additionalGearSizes.length > 0) {
-    config.additionalGearSizes.forEach((size, index) => {
-      if (size) {
-        code += (config.additionalPortingCodes[index] || 'XXXX');
-        code += `${size}-${index + 1}`;
-      }
-    });
-  }
-  
-  return code;
-}
 const PumpConfigurator = () => {
   const [config, setConfig] = React.useState({
     type: '',
@@ -336,11 +443,11 @@ const PumpConfigurator = () => {
     additionalGearSizes: [],
     portingCodes: [''],
     additionalPortingCodes: [],
-    pecSelection: ''
+    pecSelection: '',
+    bearingCarrierSelection: ''
   });
 
   const [bom, setBom] = React.useState([]);
-
   React.useEffect(() => {
     setBom(generateBOM(config));
   }, [config]);
@@ -406,34 +513,32 @@ const PumpConfigurator = () => {
   const getComponents = () => {
     if (!currentSeriesData) {
       console.warn('No data available for series:', config.series);
-      return { shaftEndCovers: [], gearHousings: [], pecCovers: [] };
+      return { 
+        shaftEndCovers: [], 
+        gearHousings: [], 
+        pecCovers: [],
+        bearingCarriers: []
+      };
     }
 
     if (is200Series && config.type === 'M') {
       return {
         shaftEndCovers: currentSeriesData.motorShaftEndCovers || [],
         gearHousings: currentSeriesData.motorGearHousings || [],
-        pecCovers: currentSeriesData.motorPecCovers || []
+        pecCovers: currentSeriesData.motorPecCovers || [],
+        bearingCarriers: currentSeriesData.bearingCarriers || []
       };
     }
 
     return {
       shaftEndCovers: currentSeriesData.shaftEndCovers || [],
       gearHousings: currentSeriesData.gearHousings || [],
-      pecCovers: currentSeriesData.pecCovers || []
+      pecCovers: currentSeriesData.pecCovers || [],
+      bearingCarriers: currentSeriesData.bearingCarriers || []
     };
   };
 
   const components = getComponents();
-  console.log('Current components:', { 
-    series: config.series, 
-    type: config.type, 
-    components: {
-      shaftEndCovers: components.shaftEndCovers?.length,
-      gearHousings: components.gearHousings?.length,
-      pecCovers: components.pecCovers?.length
-    }
-  });
 
   return React.createElement('div', { className: 'bg-white shadow rounded-lg max-w-4xl mx-auto' },
     React.createElement('div', { className: 'px-4 py-5 border-b border-gray-200' },
@@ -445,6 +550,8 @@ const PumpConfigurator = () => {
           { value: '120', label: '120 Series' },
           { value: '131', label: '131 Series' },
           { value: '151', label: '151 Series' },
+          { value: '176', label: '176 Series' },
+          { value: '215', label: '215 Series' },
           { value: '230', label: '230 Series' },
           { value: '250', label: '250 Series' },
           { value: '265', label: '265 Series' }
@@ -462,7 +569,8 @@ const PumpConfigurator = () => {
             additionalGearSizes: [],
             portingCodes: [''],
             additionalPortingCodes: [],
-            pecSelection: ''
+            pecSelection: '',
+            bearingCarrierSelection: ''
           });
         }
       ),
@@ -476,7 +584,8 @@ const PumpConfigurator = () => {
             secCode: '',
             gearSize: '',
             shaftStyle: '',
-            pecSelection: ''
+            pecSelection: '',
+            bearingCarrierSelection: ''
           })
         ),
 
@@ -493,6 +602,7 @@ const PumpConfigurator = () => {
               if (value === 'single') {
                 newConfig.additionalGearSizes = [];
                 newConfig.additionalPortingCodes = [];
+                newConfig.bearingCarrierSelection = '';
               } else {
                 const count = value === 'tandem' ? 1 : value === 'triple' ? 2 : 3;
                 newConfig.additionalGearSizes = Array(count).fill('');
@@ -529,6 +639,14 @@ const PumpConfigurator = () => {
 
           createSelectField('Port End Cover', config.pecSelection, components.pecCovers,
             (value) => setConfig({ ...config, pecSelection: value }), true
+          ),
+
+          config.pumpType !== 'single' && createSelectField(
+            'Bearing Carrier',
+            config.bearingCarrierSelection,
+            components.bearingCarriers || [],
+            (value) => setConfig({ ...config, bearingCarrierSelection: value }),
+            true
           ),
 
           config.type && React.createElement('div', { className: 'mt-8 p-4 bg-gray-100 rounded' },

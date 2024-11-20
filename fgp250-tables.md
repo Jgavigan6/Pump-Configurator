@@ -57,17 +57,18 @@
 | 25-09 | 0335-089-100 |
 
 ### Drive Gear Sets - 250 Series Code 22 (1-1/4" Keyed)
+Shaft Key: 425-129-200
 | Code | Part Number |
 |------|-------------|
 | 05-22 | N/A |
-| 07-22 | 0335-031-100 |
-| 10-22 | 0335-032-100 |
-| 12-22 | 0335-033-100 |
-| 15-22 | 0335-034-100 |
-| 17-22 | 0335-035-100 |
-| 20-22 | 0335-036-100 |
-| 22-22 | 0335-037-100 |
-| 25-22 | 0335-038-100 |
+| 07-22 | 0335-032-100 |
+| 10-22 | 0335-033-100 |
+| 12-22 | 0335-034-100 |
+| 15-22 | 0335-035-100 |
+| 17-22 | 0335-036-100 |
+| 20-22 | 0335-037-100 |
+| 22-22 | 0335-038-100 |
+| 25-22 | 0335-039-100 |
 
 ### Drive Gear Sets - 250 Series Code 18 (1-1/4" Spl.)
 | Code | Part Number |
@@ -94,6 +95,15 @@
 | 20 | 0335-017-100 | 2.00"- 5.10 C.I.D. |
 | 22 | 0335-018-100 | 2-1/4"- 5.73 C.I.D. |
 | 25 | 0335-019-100 | 2-1/2"- 6.375 C.I.D. |
+
+## Bearing Carriers - 250 Series
+| Description | Part Number | Common Number |
+|-------------|-------------|---------------|
+| P250 Common Suction Single Outlet Blank Bearing Carrier | 0435-080-500 | (323-7600-100) |
+| M250 Common Suction X Blank Bearing Carrier | 0435-082-500 | (323-7700-100) |
+| P250 Common Suction Dual Outlet Blank Bearing Carrier | 0435-030-500 | (323-7800-100) |
+
+### Gear Housing - 250 Series Motors
 
 ## Motor Components
 
@@ -122,3 +132,30 @@
 | 20 | 0435-076-500 | Same as pump |
 | 22 | 0435-077-500 | Same as pump |
 | 25 | 0435-078-500 | Same as pump |
+
+## Fasteners - Single Units
+| Gear Width Code | Part Number |
+|-----------------|-------------|
+| 05 | 391-1401-025 |
+| 07 | 391-1401-089 |
+| 10 | 391-1401-089 |
+| 12 | 391-1401-076 |
+| 15 | 391-1401-076 |
+| 17 | 391-1401-090 |
+| 20 | 391-1401-090 |
+| 22 | 391-1401-111 |
+| 25 | 391-1401-111 |
+
+## Fasteners - Multi-Units
+
+### Doubles
+| Gear Width Condition | Part Number |
+|--------------------|-------------|
+| Less than 3.00" of Gear | 391-1425-175 |
+| More than 3.00" of Gear | 391-1425-177 |
+
+### Triples/Quads
+| Gear Width Condition | Part Number |
+|--------------------|-------------|
+| Less than 4.25" of Gear | 391-1425-177 |
+| More than 4.25" of Gear | 391-1425-179 |

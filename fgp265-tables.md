@@ -42,6 +42,7 @@
 | 25-18 | 0365-028-100 |
 
 ### Drive Gear Sets - 265 Series Code 22 (1-1/4" Keyed)
+Shaft Key: 425-133-200
 | Code | Part Number |
 |------|-------------|
 | 05-22 | N/A |
@@ -65,6 +66,15 @@
 | 20 | 0365-016-100 | 2.00"- 7.20 C.I.D. |
 | 22 | 0365-017-100 | 2-1/4"- 8.10 C.I.D. |
 | 25 | 0365-018-100 | 2-1/2"- 9.00 C.I.D. |
+
+## Bearing Carriers - 265 Series
+| Description | Part Number | Common Number |
+|-------------|-------------|---------------|
+| P265 Common Suction Single Outlet Blank Bearing Carrier | 0465-031-500 | (322-7600-100) |
+| M265 Common Suction X Blank Bearing Carrier | 0465-038-500 | (322-7700-100) |
+| P265 Common Suction Dual Outlet Blank Bearing Carrier | 0465-030-500 | (322-7800-100) |
+
+### Gear Housing - 265 Series Motors
 
 ## Motor Components
 
@@ -91,3 +101,48 @@
 | 20 | 0465-076-500 |
 | 22 | 0465-078-500 |
 | 25 | 0465-079-500 |
+
+## Pump Fasteners - Single Units
+| Gear Width Code | Part Number |
+|-----------------|-------------|
+| 07 | 391-1401-025 |
+| 10 | 391-1401-025 |
+| 12 | 391-1401-089 |
+| 15 | 391-1401-089 |
+| 17 | 391-1401-076 |
+| 20 | 391-1401-076 |
+| 22 | 391-1401-090 |
+| 25 | 391-1401-090 |
+
+## Pump Fasteners - Multi-Units
+
+### Doubles
+| Gear Width Condition | Part Number |
+|--------------------|-------------|
+| Less than 2.00" of Gear | 391-1425-175 |
+| More than 2.00" of Gear | 391-1425-177 |
+
+### Triples/Quads
+| Gear Width Condition | Part Number |
+|--------------------|-------------|
+| Less than 2.50" of Gear | 391-1425-177 |
+| More than 2.75" of Gear | 391-1425-179 |
+
+## Motor Fasteners - Single Units
+| Gear Width Code | Part Number |
+|-----------------|-------------|
+| 07 | 391-1401-196 |
+| 10 | 391-1401-196 |
+| 12 | 391-1401-197 |
+| 15 | 391-1401-197 |
+| 17 | 391-1401-189 |
+| 20 | 391-1401-189 |
+| 22 | 391-1401-198 |
+| 25 | 391-1401-198 |
+
+## Motor Fasteners - Multi-Units
+| Part Description | Part Number |
+|-----------------|-------------|
+| 3/4-11 Threaded Rod (1ea) | 47459 |
+| 3/4"-11 Nuts | 1136554 |
+| 3/4" Washers | 391-3782-114 |
