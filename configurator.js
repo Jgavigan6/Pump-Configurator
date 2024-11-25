@@ -2,7 +2,6 @@ console.log('Loading configurator...');
 
 let seriesData = {};
 
-// Constants
 const SERIES_FILES = {
   '20': 'p20-complete-final.md',
   '51': 'p51-complete-final.md',
@@ -12,11 +11,11 @@ const SERIES_FILES = {
   '151': 'p151-tables.md',
   '176': 'p176-tables.md',
   '215': 'p215-tables.md',
-  '315': 'p315-complete-final.md',
-  '330': 'p330-complete-final.md',
   '230': 'fgp230-tables.md',
   '250': 'fgp250-tables.md',
   '265': 'fgp265-tables.md',
+  '315': 'p315-complete-final.md',
+  '330': 'p330-complete-final.md',
   '350': 'p350-complete-final.md',
   '365': 'p365-complete-final.md'
 };
@@ -32,104 +31,102 @@ const DEFAULT_ROTATION_OPTIONS = [
   { code: '9', description: 'Birotational motor with 1-1/4" NPT case drain without bearing' }
 ];
 
-function validateConfig(config) {
-  const errors = [];
-  const currentSeriesData = seriesData[config.series];
-
-  // Basic validation
-  if (!config.series) {
-    return { isValid: false, errors: ['Series must be selected'] };
-  }
-
-  // Only validate other fields if series is selected
-  if (!currentSeriesData) {
-    return { isValid: false, errors: ['No data available for selected series'] };
-  }
-
-  const is200Series = ['230', '250', '265'].includes(config.series);
-  const is300Series = ['315', '330', '350', '365'].includes(config.series);
-
-  if (config.type) {
-    // Get appropriate components based on type and series
-    const components = (is200Series || is300Series) && config.type === 'M' ?
-      {
-        shaftEndCovers: currentSeriesData.motorShaftEndCovers,
-        gearHousings: currentSeriesData.motorGearHousings
-      } :
-      {
-        shaftEndCovers: currentSeriesData.shaftEndCovers,
-        gearHousings: currentSeriesData.gearHousings
-      };
-
-    // Validate required components exist
-    if (!components.shaftEndCovers?.length) {
-      errors.push('No shaft end covers available');
-    }
-    if (!components.gearHousings?.length) {
-      errors.push('No gear housings available');
-    }
-    if (!currentSeriesData.shaftStyles?.length) {
-      errors.push('No shaft styles available');
-    }
-  }
-
-  return {
-    isValid: errors.length === 0,
-    errors
-  };
-}
-
 function cleanMarkdownContent(content) {
-  // Remove any potential non-printable characters and normalize line endings
   return content
     .replace(/[\x00-\x09\x0B-\x1F\x7F]/g, '')
     .replace(/\r\n/g, '\n')
-    .replace(/\r/g, '\n');
+    .replace(/\r/g, '\n')
+    .trim();
 }
 
-function parseTableSection(section, startIndex = 2) {
-  const lines = section.split('\n')
-    .filter(line => line.includes('|'))
-    .slice(startIndex);
+function findSectionContent(text, sectionTitle, includeSubsections = false) {
+  if (!text || !sectionTitle) return '';
+  
+  const sections = text.split(/(?=#{1,3}\s)/);
+  const matchingSection = sections.find(section => {
+    const firstLine = section.split('\n')[0];
+    return firstLine.toLowerCase().includes(sectionTitle.toLowerCase());
+  });
 
-  return lines.map(line => {
+  if (!matchingSection) return '';
+
+  if (includeSubsections) {
+    return matchingSection;
+  }
+
+  // Only return the content up to the next section of the same or higher level
+  const lines = matchingSection.split('\n');
+  const headerLevel = (lines[0].match(/^#+/) || ['#'])[0].length;
+  const contentLines = [lines[0]];
+  
+  for (let i = 1; i < lines.length; i++) {
+    if (lines[i].match(new RegExp(`^#{1,${headerLevel}}`))) break;
+    contentLines.push(lines[i]);
+  }
+
+  return contentLines.join('\n').trim();
+}
+
+function parseTableData(section) {
+  if (!section) return [];
+  
+  const lines = section.split('\n').filter(line => line.trim() && line.includes('|'));
+  if (lines.length <= 2) return [];
+
+  return lines.slice(2).map(line => {
     const cells = line.split('|')
-      .slice(1, -1)
-      .map(cell => cell.trim());
-    return cells;
-  }).filter(cells => cells.some(cell => cell && cell.toLowerCase() !== 'n/a'));
+      .map(cell => cell.trim())
+      .filter((cell, index, arr) => index > 0 && index < arr.length - 1);
+    return cells.length ? cells : null;
+  }).filter(Boolean);
 }
 
-function processSectionContent(section) {
-  const sectionTitle = section.split('\n')[0].trim();
-  const sectionContent = section.substring(section.indexOf('\n') + 1);
-  return { sectionTitle, sectionContent };
-}
-
-function validateLoadedData(data, series) {
-  const errors = [];
-
-  if (!data.shaftEndCovers?.length && !data.motorShaftEndCovers?.length) {
-    errors.push('No shaft end covers found');
-  }
-  if (!data.gearHousings?.length && !data.motorGearHousings?.length) {
-    errors.push('No gear housings found');
-  }
-  if (!data.shaftStyles?.length) {
-    errors.push('No shaft styles found');
-  }
-  if (Object.keys(data.driveGearSets || {}).length === 0) {
-    errors.push('No drive gear sets found');
-  }
-
-  if (errors.length > 0) {
-    console.warn(`Validation failed for series ${series}:`, errors);
+function extractDriveGearSetInfo(section) {
+  if (!section) return null;
+  
+  const titleLine = section.split('\n')[0];
+  const codeMatch = titleLine.match(/Code (\d+)\s*\(([^)]+)\)/i) ||
+                   titleLine.match(/Series Code (\d+)\s*\(([^)]+)\)/i);
+  
+  if (!codeMatch) {
+    // Try alternative format for nested sections
+    const subHeaderMatch = section.match(/#{1,3}\s*Code\s+(\d+)\s*\(([^)]+)\)/i);
+    if (subHeaderMatch) {
+      return {
+        code: subHeaderMatch[1],
+        description: subHeaderMatch[2].trim()
+      };
+    }
+    return null;
   }
 
   return {
-    isValid: errors.length === 0,
-    errors
+    code: codeMatch[1],
+    description: codeMatch[2].trim()
   };
+}
+
+function findAllDriveGearSets(markdown) {
+  const driveGearSets = [];
+  const sectionMatches = markdown.match(/#{1,3}\s*(Drive Gear Sets[^#]*(?:(?!#{1,3}\s*(?!Code))[\s\S])*)/g) || [];
+  
+  sectionMatches.forEach(section => {
+    // Split into subsections if they exist
+    const subSections = section.split(/(?=#{3}\s*Code)/);
+    
+    subSections.forEach(subSection => {
+      const info = extractDriveGearSetInfo(subSection);
+      if (info) {
+        driveGearSets.push({
+          code: info.code,
+          description: info.description,
+          content: subSection.trim()
+        });
+      }
+    });
+  });
+
+  return driveGearSets;
 }
 async function parseMarkdownData(markdownText) {
   console.log('Starting to parse markdown data');
@@ -150,158 +147,199 @@ async function parseMarkdownData(markdownText) {
     fastenersDoubles: [],
     fastenersTripleQuad: [],
     shaftStyles: [],
+    motorFastenersSingle: [],
     rotationOptions: [...DEFAULT_ROTATION_OPTIONS]
   };
 
-  try {
-    // Split into sections and filter out empty ones
-    const sections = cleanedMarkdown.split('\n## ')
-      .map(section => section.trim())
-      .filter(Boolean);
+  // Specifically handle the two major sections for 200 series
+  const pumpSection = findSectionContent(cleanedMarkdown, 'Pump Components', true) || cleanedMarkdown;
+  const motorSection = findSectionContent(cleanedMarkdown, 'Motor Components', true);
 
-    sections.forEach(section => {
-      try {
-        const { sectionTitle, sectionContent } = processSectionContent(section);
-        console.log('Processing section:', sectionTitle);
+  // Parse SEC sections specifically for both pump and motor
+  const secPumpContent = findSectionContent(pumpSection, 'Shaft End Cover (SEC)') || 
+                        findSectionContent(cleanedMarkdown, 'Shaft End Cover (SEC)');
+                        
+  if (secPumpContent) {
+    data.shaftEndCovers = parseTableData(secPumpContent)
+      .map(([code, partNumber, description]) => ({
+        code,
+        partNumber,
+        description: description || code
+      }))
+      .filter(item => item.code && item.partNumber);
 
-        // Process Shaft End Covers
-        if (sectionTitle.includes('Shaft End Cover (SEC)') || sectionTitle.includes('SEC')) {
-          const rows = parseTableSection(sectionContent);
-          const parsedData = rows
-            .filter(row => row[0] && row[1]) // Ensure code and part number exist
-            .map(([code, partNumber, description]) => ({
-              code,
-              partNumber,
-              description: description || 'Standard'
-            }));
+    console.log('Parsed pump SEC:', data.shaftEndCovers);
+  }
 
-          if (sectionTitle.toLowerCase().includes('motor')) {
-            data.motorShaftEndCovers = parsedData;
-            console.log('Added motor shaft end covers:', parsedData.length);
-          } else {
-            data.shaftEndCovers = parsedData;
-            console.log('Added pump shaft end covers:', parsedData.length);
-          }
-        }
+  const secMotorContent = findSectionContent(motorSection, 'Shaft End Cover (SEC)');
+  if (secMotorContent) {
+    data.motorShaftEndCovers = parseTableData(secMotorContent)
+      .map(([code, partNumber, description]) => ({
+        code,
+        partNumber,
+        description: description || code
+      }))
+      .filter(item => item.code && item.partNumber);
 
-        // Process Gear Housing
-        else if (sectionTitle.includes('Gear Housing')) {
-          const rows = parseTableSection(sectionContent);
-          const parsedData = rows
-            .filter(row => row[0] && row[0].match(/^\d+$/)) // Only process rows where first column is a number
-            .map(([code, partNumber, description]) => ({
-              code,
-              partNumber,
-              description: description || 'Standard'
-            }));
+    console.log('Parsed motor SEC:', data.motorShaftEndCovers);
+  }
 
-          if (sectionTitle.toLowerCase().includes('motor')) {
-            data.motorGearHousings = parsedData;
-            console.log('Added motor gear housings:', parsedData.length);
-          } else {
-            data.gearHousings = parsedData;
-            console.log('Added pump gear housings:', parsedData.length);
-          }
-        }
+  // Parse gear housings for both pump and motor
+  const gearPumpContent = findSectionContent(pumpSection, 'Gear Housing') || 
+                         findSectionContent(cleanedMarkdown, 'Gear Housing');
+  if (gearPumpContent) {
+    data.gearHousings = parseTableData(gearPumpContent)
+      .map(([code, partNumber, description]) => ({
+        code,
+        partNumber,
+        description: description || code
+      }))
+      .filter(item => item.code && item.partNumber);
 
-        // Process Drive Gear Sets
-        else if (sectionTitle.includes('Drive Gear Sets') && !sectionTitle.includes('Idler')) {
-          const subsections = sectionContent.split('\n### ').filter(Boolean);
-          
-          subsections.forEach(subsection => {
-            const subsectionLines = subsection.split('\n');
-            const subsectionTitle = subsectionLines[0].trim();
-            
-            // Extract style code and description
-            let styleCode, styleDesc;
-            
-            // Try different patterns for style extraction
-            const patterns = [
-              /Code (\d+).*?\((.*?)\)/,
-              /Series Code (\d+).*?\((.*?)\)/,
-              /(\d+)\s*\((.*?)\)/
-            ];
+    console.log('Parsed pump gear housings:', data.gearHousings);
+  }
 
-            for (const pattern of patterns) {
-              const match = subsectionTitle.match(pattern);
-              if (match) {
-                styleCode = match[1];
-                styleDesc = match[2];
-                break;
-              }
-            }
+  const gearMotorContent = findSectionContent(motorSection, 'Gear Housing');
+  if (gearMotorContent) {
+    data.motorGearHousings = parseTableData(gearMotorContent)
+      .map(([code, partNumber, description]) => ({
+        code,
+        partNumber,
+        description: description || 'Same as pump'
+      }))
+      .filter(item => item.code && item.partNumber);
 
-            // If no pattern matched, try to extract from the first data row
-            if (!styleCode) {
-              const rows = parseTableSection(subsection);
-              if (rows.length > 0) {
-                const codeMatch = rows[0][0].match(/\d+-(\d+)/);
-                if (codeMatch) {
-                  styleCode = codeMatch[1];
-                  styleDesc = subsectionTitle;
-                }
-              }
-            }
+    console.log('Parsed motor gear housings:', data.motorGearHousings);
+  }
 
-            if (styleCode) {
-              // Add to shaft styles if not already present
-              if (!data.shaftStyles.find(s => s.code === styleCode)) {
-                data.shaftStyles.push({ code: styleCode, description: styleDesc });
-              }
+  // Critical fix for drive gear sets parsing
+  const driveGearSets = findAllDriveGearSets(cleanedMarkdown);
+  driveGearSets.forEach(section => {
+    const tableData = parseTableData(section.content);
+    if (!data.driveGearSets[section.code]) {
+      data.driveGearSets[section.code] = {};
+    }
 
-              // Process gear sets
-              if (!data.driveGearSets[styleCode]) {
-                data.driveGearSets[styleCode] = {};
-              }
+    // Add shaft key if present
+    const shaftKeyMatch = section.content.match(/Shaft Key:\s*([A-Za-z0-9-]+)/);
+    if (shaftKeyMatch) {
+      data.driveGearSets[section.code].shaftKey = shaftKeyMatch[1];
+    }
 
-              // Look for shaft key
-              const shaftKeyMatch = subsection.match(/Shaft Key:\s*([A-Za-z0-9-]+)/);
-              if (shaftKeyMatch) {
-                data.driveGearSets[styleCode].shaftKey = shaftKeyMatch[1];
-              }
+    // Add to shaft styles if not already present
+    if (!data.shaftStyles.find(s => s.code === section.code)) {
+      data.shaftStyles.push({
+        code: section.code,
+        description: section.description
+      });
+    }
 
-              // Add gear sets
-              const rows = parseTableSection(subsection);
-              rows.forEach(([code, partNumber]) => {
-                if (code && partNumber && partNumber.toLowerCase() !== 'n/a') {
-                  data.driveGearSets[styleCode][code] = partNumber;
-                }
-              });
-
-              console.log(`Added drive gear set for style ${styleCode}`);
-            }
-          });
-        }
-
-        // Process other sections...
-        // [Previous section processing code remains the same]
-
-      } catch (error) {
-        console.error(`Error processing section: ${section.split('\n')[0]}`, error);
+    // Parse gear sets
+    tableData.forEach(([code, partNumber]) => {
+      if (code && partNumber && partNumber.toLowerCase() !== 'n/a') {
+        data.driveGearSets[section.code][code] = partNumber;
       }
     });
+  });
 
-    // Validate and log parsed data summary
-    console.log('Parsed data summary:', {
-      shaftStyles: data.shaftStyles.length,
-      shaftEndCovers: data.shaftEndCovers.length,
-      gearHousings: data.gearHousings.length,
-      driveGearSets: Object.keys(data.driveGearSets).length
-    });
+  console.log('Parsed shaft styles:', data.shaftStyles);
 
-    return data;
-  } catch (error) {
-    console.error('Error parsing markdown data:', error);
-    throw error;
+  // Parse PEC sections
+  const pecPumpContent = findSectionContent(pumpSection, 'P.E.C Cover');
+  if (pecPumpContent) {
+    data.pecCovers = parseTableData(pecPumpContent)
+      .map(([description, partNumber]) => ({
+        description,
+        partNumber
+      }))
+      .filter(item => item.partNumber);
   }
-}
 
+  const pecMotorContent = findSectionContent(motorSection, 'P.E.C Cover');
+  if (pecMotorContent) {
+    data.motorPecCovers = parseTableData(pecMotorContent)
+      .map(([description, partNumber]) => ({
+        description,
+        partNumber
+      }))
+      .filter(item => item.partNumber);
+  }
+
+  // Parse remaining components (idler gears, bearing carriers, fasteners)
+  const idlerSection = findSectionContent(cleanedMarkdown, 'Idler Gear Sets');
+  if (idlerSection) {
+    data.idlerGearSets = parseTableData(idlerSection)
+      .map(([code, partNumber, description]) => ({
+        code,
+        partNumber,
+        description: description || code
+      }))
+      .filter(item => item.code && item.partNumber);
+  }
+
+  // Parse bearing carriers with common number handling
+  const bearingSection = findSectionContent(cleanedMarkdown, 'Bearing Carriers');
+  if (bearingSection) {
+    data.bearingCarriers = parseTableData(bearingSection)
+      .map(([description, partNumber, commonNumber]) => ({
+        description,
+        partNumber,
+        commonNumber: commonNumber ? commonNumber.replace(/[()]/g, '').trim() : ''
+      }))
+      .filter(item => item.partNumber);
+  }
+
+  // Parse fasteners with separate pump/motor handling
+  const pumpFastenerSection = findSectionContent(cleanedMarkdown, 'Pump Fasteners - Single Units') ||
+                             findSectionContent(cleanedMarkdown, 'Fasteners - Single Units');
+  const motorFastenerSection = findSectionContent(cleanedMarkdown, 'Motor Fasteners - Single Units');
+
+  if (pumpFastenerSection) {
+    data.fastenersSingle = parseTableData(pumpFastenerSection)
+      .map(([code, partNumber]) => ({
+        code,
+        partNumber
+      }))
+      .filter(item => item.partNumber);
+  }
+
+  if (motorFastenerSection) {
+    data.motorFastenersSingle = parseTableData(motorFastenerSection)
+      .map(([code, partNumber]) => ({
+        code,
+        partNumber
+      }))
+      .filter(item => item.partNumber);
+  }
+
+  // Parse multi-unit fasteners
+  const doublesSection = findSectionContent(cleanedMarkdown, 'Doubles');
+  if (doublesSection) {
+    data.fastenersDoubles = parseTableData(doublesSection)
+      .map(([condition, partNumber]) => ({
+        condition: condition.trim(),
+        partNumber: partNumber.trim()
+      }))
+      .filter(item => item.partNumber);
+  }
+
+  const triplesSection = findSectionContent(cleanedMarkdown, 'Triples/Quads');
+  if (triplesSection) {
+    data.fastenersTripleQuad = parseTableData(triplesSection)
+      .map(([condition, partNumber]) => ({
+        condition: condition.trim(),
+        partNumber: partNumber.trim()
+      }))
+      .filter(item => item.partNumber);
+  }
+
+  return data;
+}
 async function loadSeriesData() {
   try {
     console.log('Starting to load series data...');
     const loadedData = {};
     
-    // Load each file sequentially to ensure proper loading
     for (const [series, filename] of Object.entries(SERIES_FILES)) {
       try {
         console.log(`Loading ${filename} for series ${series}...`);
@@ -319,24 +357,32 @@ async function loadSeriesData() {
         }
 
         const parsedData = await parseMarkdownData(content);
-        const validation = validateLoadedData(parsedData, series);
         
-        if (validation.isValid) {
-          loadedData[series] = parsedData;
-          console.log(`Successfully loaded series ${series}`);
-        } else {
-          console.warn(`Validation failed for series ${series}:`, validation.errors);
-          loadedData[series] = parsedData; // Still load the data even if validation fails
+        // Validate parsed data for 200 series
+        if (['230', '250', '265'].includes(series)) {
+          console.log(`Validating 200 series data for ${series}:`, {
+            shaftEndCovers: parsedData.shaftEndCovers?.length || 0,
+            motorShaftEndCovers: parsedData.motorShaftEndCovers?.length || 0,
+            gearHousings: parsedData.gearHousings?.length || 0,
+            motorGearHousings: parsedData.motorGearHousings?.length || 0,
+            shaftStyles: parsedData.shaftStyles?.length || 0,
+            driveGearSets: Object.keys(parsedData.driveGearSets || {}).length
+          });
         }
+
+        loadedData[series] = parsedData;
       } catch (error) {
         console.error(`Error loading series ${series}:`, error);
       }
     }
 
-    // Set global series data
-    seriesData = loadedData;
+    if (Object.keys(loadedData).length === 0) {
+      throw new Error('No series data could be loaded');
+    }
 
-    console.log('All series loaded. Available series:', Object.keys(seriesData));
+    seriesData = loadedData;
+    console.log('Series data loaded successfully');
+    
     initializeConfigurator();
   } catch (error) {
     console.error('Error in loadSeriesData:', error);
@@ -348,14 +394,108 @@ async function loadSeriesData() {
     `;
   }
 }
-function generateModelCode(config) {
-  try {
-    const validation = validateConfig(config);
-    if (!validation.isValid) {
-      console.warn('Invalid configuration for model code generation:', validation.errors);
-      return '';
+
+function calculateTotalGearWidth(config, currentSeriesData) {
+  if (!currentSeriesData?.gearHousings || !config.gearSize) return 0;
+
+  let totalWidth = 0;
+  
+  const extractWidth = (description) => {
+    if (!description) return null;
+
+    const patterns = [
+      /(\d+(?:\.\d+)?)"?-\s*[\d.]+\s*C\.I\.D\./i,
+      /(\d+(?:\.\d+)?)"(?=[\s-]|$)/,
+      /^(\d+(?:\.\d+)?)/,
+      /(\d+(?:\.\d+)?)/
+    ];
+
+    for (const pattern of patterns) {
+      const match = description.match(pattern);
+      if (match) {
+        const width = parseFloat(match[1]);
+        if (!isNaN(width) && width > 0) return width;
+      }
     }
-    
+    return null;
+  };
+
+  const primaryGear = currentSeriesData.gearHousings.find(h => h.code === config.gearSize);
+  if (primaryGear) {
+    const width = extractWidth(primaryGear.description);
+    if (width !== null) totalWidth += width;
+  }
+
+  if (config.additionalGearSizes) {
+    config.additionalGearSizes.forEach(size => {
+      if (!size) return;
+      const gear = currentSeriesData.gearHousings.find(h => h.code === size);
+      if (gear) {
+        const width = extractWidth(gear.description);
+        if (width !== null) totalWidth += width;
+      }
+    });
+  }
+
+  return totalWidth;
+}
+
+function determineFastenerPartNumber(config, currentSeriesData, totalGearWidth) {
+  if (!currentSeriesData || !config.gearSize) return null;
+
+  try {
+    // Handle motor vs pump fasteners for 200 series
+    const fastenerSingleArray = config.type === 'M' && currentSeriesData.motorFastenersSingle?.length > 0
+      ? currentSeriesData.motorFastenersSingle
+      : currentSeriesData.fastenersSingle;
+
+    if (config.pumpType === 'single') {
+      const fastener = fastenerSingleArray?.find(f => f.code === config.gearSize);
+      return fastener?.partNumber;
+    }
+
+    if (!config.pumpType || config.pumpType === 'single') return null;
+
+    const fastenersMulti = config.pumpType === 'tandem' ? 
+      currentSeriesData.fastenersDoubles : 
+      currentSeriesData.fastenersTripleQuad;
+
+    if (!fastenersMulti?.length) return null;
+
+    return fastenersMulti.find(f => {
+      const condition = f.condition.toLowerCase();
+      const widthMatch = condition.match(/(\d+(\.\d+)?)/);
+      if (!widthMatch) return false;
+      
+      const widthLimit = parseFloat(widthMatch[1]);
+      return condition.includes('less than') ? 
+        totalGearWidth < widthLimit : 
+        totalGearWidth >= widthLimit;
+    })?.partNumber;
+  } catch (error) {
+    console.error('Error determining fastener part number:', error);
+    return null;
+  }
+}
+
+function determineBearingCarrierQty(pumpType) {
+  const qtyMap = {
+    'single': 0,
+    'tandem': 1,
+    'double': 1,
+    'triple': 2,
+    'quad': 3
+  };
+  return qtyMap[pumpType?.toLowerCase()] || 0;
+}
+
+function generateModelCode(config) {
+  if (!config.type || !config.series || !config.rotation || 
+      !config.secCode || !config.gearSize || !config.shaftStyle) {
+    return '';
+  }
+  
+  try {
     let code = `${config.type}${config.series}A${config.rotation}${config.secCode}`;
     code += config.portingCodes[0] || 'XXXX';
     code += `${config.gearSize}-${config.shaftStyle}`;
@@ -375,28 +515,15 @@ function generateModelCode(config) {
     return '';
   }
 }
-
 function generateBOM(config) {
+  const currentSeriesData = seriesData[config.series];
+  if (!currentSeriesData || !config.type) return [];
+
+  const bom = [];
+  const is200Series = ['230', '250', '265'].includes(config.series);
+  const is300Series = ['315', '330', '350', '365'].includes(config.series);
+
   try {
-    const validation = validateConfig(config);
-    if (!validation.isValid) {
-      console.warn('Invalid configuration for BOM generation:', validation.errors);
-      return [];
-    }
-
-    const currentSeriesData = seriesData[config.series];
-    if (!currentSeriesData) {
-      console.error('No data found for series:', config.series);
-      return [];
-    }
-
-    console.log('Generating BOM for config:', config);
-    
-    const bom = [];
-    const is200Series = ['230', '250', '265'].includes(config.series);
-    const is300Series = ['315', '330', '350', '365'].includes(config.series);
-
-    // Helper function to add item to BOM
     const addToBOM = (partNumber, quantity, description) => {
       if (partNumber && partNumber.toLowerCase() !== 'n/a') {
         bom.push({ partNumber, quantity, description });
@@ -405,47 +532,50 @@ function generateBOM(config) {
       return false;
     };
 
+    // Get the correct components based on type and series
+    const components = (is200Series || is300Series) && config.type === 'M' ?
+      {
+        shaftEndCovers: currentSeriesData.motorShaftEndCovers,
+        gearHousings: currentSeriesData.motorGearHousings,
+        pecCovers: currentSeriesData.motorPecCovers,
+        fasteners: currentSeriesData.motorFastenersSingle
+      } :
+      {
+        shaftEndCovers: currentSeriesData.shaftEndCovers,
+        gearHousings: currentSeriesData.gearHousings,
+        pecCovers: currentSeriesData.pecCovers,
+        fasteners: currentSeriesData.fastenersSingle
+      };
+
     // Add shaft end cover
-    const secArray = (is200Series || is300Series) && config.type === 'M' ? 
-      currentSeriesData.motorShaftEndCovers : 
-      currentSeriesData.shaftEndCovers;
-
-    if (!secArray?.length) {
-      console.warn(`No shaft end covers found for series ${config.series}, type ${config.type}`);
-    }
-
-    const sec = secArray?.find(s => s.code === config.secCode);
-    if (sec) {
-      addToBOM(sec.partNumber, 1, `Shaft End Cover - ${sec.description}`);
+    if (config.secCode) {
+      const sec = components.shaftEndCovers?.find(s => s.code === config.secCode);
+      if (sec) {
+        addToBOM(sec.partNumber, 1, `Shaft End Cover - ${sec.description}`);
+      }
     }
 
     // Add gear housings
-    const gearArray = (is200Series || is300Series) && config.type === 'M' ? 
-      currentSeriesData.motorGearHousings : 
-      currentSeriesData.gearHousings;
-
-    if (!gearArray?.length) {
-      console.warn(`No gear housings found for series ${config.series}, type ${config.type}`);
-    }
-
-    const gearSizes = [config.gearSize];
-    if (config.pumpType !== 'single' && config.additionalGearSizes) {
-      gearSizes.push(...config.additionalGearSizes.filter(Boolean));
-    }
-    
-    gearSizes.forEach((size, index) => {
-      const housing = gearArray?.find(h => h.code === size);
-      if (housing) {
-        addToBOM(
-          housing.partNumber,
-          1,
-          `Gear Housing ${index === 0 ? '(Primary)' : `(Section ${index + 2})`} - ${housing.description}`
-        );
+    if (config.gearSize) {
+      const gearSizes = [config.gearSize];
+      if (config.pumpType !== 'single' && config.additionalGearSizes) {
+        gearSizes.push(...config.additionalGearSizes.filter(Boolean));
       }
-    });
+      
+      gearSizes.forEach((size, index) => {
+        const housing = components.gearHousings?.find(h => h.code === size);
+        if (housing) {
+          addToBOM(
+            housing.partNumber,
+            1,
+            `Gear Housing ${index === 0 ? '(Primary)' : `(Section ${index + 2})`} - ${housing.description}`
+          );
+        }
+      });
+    }
 
-    // Add drive gear set and shaft key if needed
-    if (currentSeriesData.driveGearSets && config.shaftStyle) {
+    // Add drive gear set and shaft key
+    if (config.shaftStyle && config.gearSize) {
       const driveGearKey = `${config.gearSize}-${config.shaftStyle}`;
       const driveGearSet = currentSeriesData.driveGearSets[config.shaftStyle];
       const driveGearPartNumber = driveGearSet?.[driveGearKey];
@@ -453,7 +583,6 @@ function generateBOM(config) {
       if (driveGearPartNumber && driveGearPartNumber !== 'N/A') {
         const shaftStyle = currentSeriesData.shaftStyles?.find(s => s.code === config.shaftStyle);
         
-        // Add shaft key if specified
         if (driveGearSet.shaftKey) {
           addToBOM(
             driveGearSet.shaftKey,
@@ -488,15 +617,7 @@ function generateBOM(config) {
 
     // Add PEC Cover
     if (config.pecSelection) {
-      const pecArray = (is200Series || is300Series) && config.type === 'M' ? 
-        currentSeriesData.motorPecCovers : 
-        currentSeriesData.pecCovers;
-
-      if (!pecArray?.length) {
-        console.warn(`No PEC covers found for series ${config.series}, type ${config.type}`);
-      }
-
-      const pecCover = pecArray?.find(pec => pec.partNumber === config.pecSelection);
+      const pecCover = components.pecCovers?.find(pec => pec.partNumber === config.pecSelection);
       if (pecCover) {
         addToBOM(
           pecCover.partNumber,
@@ -506,7 +627,7 @@ function generateBOM(config) {
       }
     }
 
-    // Add bearing carrier
+    // Add bearing carrier for multi-section pumps
     if (config.pumpType !== 'single' && config.bearingCarrierSelection) {
       const qty = determineBearingCarrierQty(config.pumpType);
       const bearingCarrier = currentSeriesData.bearingCarriers?.find(
@@ -523,16 +644,18 @@ function generateBOM(config) {
     }
 
     // Add fasteners
-    const totalGearWidth = calculateTotalGearWidth(config, currentSeriesData);
-    const fastenerPartNumber = determineFastenerPartNumber(config, currentSeriesData, totalGearWidth);
-    
-    if (fastenerPartNumber) {
-      const fastenerQty = config.series === '76' ? 8 : 4;
-      addToBOM(
-        fastenerPartNumber,
-        fastenerQty,
-        `Fastener${fastenerQty > 4 ? 's' : ''} for ${config.pumpType} unit`
-      );
+    if (config.gearSize) {
+      const totalGearWidth = calculateTotalGearWidth(config, currentSeriesData);
+      const fastenerPartNumber = determineFastenerPartNumber(config, currentSeriesData, totalGearWidth);
+      
+      if (fastenerPartNumber) {
+        const fastenerQty = config.series === '76' ? 8 : 4;
+        addToBOM(
+          fastenerPartNumber,
+          fastenerQty,
+          `Fastener${fastenerQty > 4 ? 's' : ''} for ${config.pumpType || 'single'} unit`
+        );
+      }
     }
 
     // Add small parts kit
@@ -553,13 +676,13 @@ function generateBOM(config) {
       }
     }
 
-    console.log('Generated BOM:', bom);
-    return bom;
   } catch (error) {
     console.error('Error generating BOM:', error);
-    return [];
   }
+
+  return bom;
 }
+
 const PumpConfigurator = () => {
   const initialState = {
     type: '',
@@ -576,15 +699,17 @@ const PumpConfigurator = () => {
     bearingCarrierSelection: ''
   };
 
-  // Main state
   const [config, setConfig] = React.useState(initialState);
   const [bom, setBom] = React.useState([]);
-  const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState(null);
 
-  // Effect for BOM generation
+  const is200Series = React.useMemo(() => 
+    ['230', '250', '265'].includes(config.series), [config.series]);
+  const is300Series = React.useMemo(() => 
+    ['315', '330', '350', '365'].includes(config.series), [config.series]);
+
   React.useEffect(() => {
-    if (Object.keys(config).some(key => config[key])) {
+    if (config.type && config.series) {
       try {
         const newBom = generateBOM(config);
         setBom(newBom);
@@ -593,10 +718,14 @@ const PumpConfigurator = () => {
         console.error('Error generating BOM:', error);
         setError('Error generating bill of materials');
       }
+    } else {
+      setBom([]);
     }
   }, [config]);
+  // Continue PumpConfigurator component...
 
-  // Helper functions
+  // Continue PumpConfigurator component...
+
   const createEmptyOption = () => React.createElement(
     'option',
     { value: '', key: 'empty' },
@@ -606,31 +735,62 @@ const PumpConfigurator = () => {
   const getAvailableComponents = (seriesData, type) => {
     if (!seriesData) return {};
 
-    const is200Series = ['230', '250', '265'].includes(config.series);
-    const is300Series = ['315', '330', '350', '365'].includes(config.series);
+    const isMotor = type === 'M';
+    console.log(`Getting ${isMotor ? 'motor' : 'pump'} components for series ${config.series}`);
 
-    return (is200Series || is300Series) && type === 'M'
+    return (is200Series || is300Series) && isMotor
       ? {
           shaftEndCovers: seriesData.motorShaftEndCovers || [],
           gearHousings: seriesData.motorGearHousings || [],
           pecCovers: seriesData.motorPecCovers || [],
-          bearingCarriers: seriesData.bearingCarriers || []
+          bearingCarriers: seriesData.bearingCarriers || [],
+          shaftStyles: seriesData.shaftStyles || []
         }
       : {
           shaftEndCovers: seriesData.shaftEndCovers || [],
           gearHousings: seriesData.gearHousings || [],
           pecCovers: seriesData.pecCovers || [],
-          bearingCarriers: seriesData.bearingCarriers || []
+          bearingCarriers: seriesData.bearingCarriers || [],
+          shaftStyles: seriesData.shaftStyles || []
         };
+  };
+
+  const handleSeriesChange = (value) => {
+    console.log('Series changed to:', value);
+    const newSeriesData = seriesData[value];
+    
+    if (!newSeriesData) {
+      console.error(`No data available for series ${value}`);
+      setError(`No data available for series ${value}`);
+      return;
+    }
+
+    setConfig({
+      ...initialState,
+      series: value
+    });
+    setError(null);
+  };
+
+  const handleTypeChange = (value) => {
+    console.log('Type changed to:', value);
+    setConfig({
+      ...config,
+      type: value,
+      secCode: '',
+      gearSize: '',
+      shaftStyle: '',
+      pecSelection: '',
+      bearingCarrierSelection: ''
+    });
   };
 
   const createSelectField = (label, value, options, onChange, isPecSelect = false) => {
     if (!Array.isArray(options)) {
-      console.warn(`No options provided for ${label}, series ${config.series}`);
+      console.warn(`No options provided for ${label}`);
       options = [];
     }
 
-    // Filter out invalid options
     const validOptions = options.filter(option => {
       if (isPecSelect) {
         return option && option.partNumber && option.description;
@@ -638,14 +798,7 @@ const PumpConfigurator = () => {
       return option && (option.value || option.code) && (option.label || option.description);
     });
 
-    // Create field ID for labeling
     const fieldId = `field-${label.toLowerCase().replace(/\s+/g, '-')}`;
-
-    // Log options for debugging
-    console.log(`Creating select field for ${label}:`, {
-      validOptions: validOptions.length,
-      firstOption: validOptions[0]
-    });
 
     return React.createElement('div', { className: 'mb-4' },
       React.createElement('label', {
@@ -654,14 +807,10 @@ const PumpConfigurator = () => {
       }, label),
       React.createElement('select', {
         id: fieldId,
-        className: `w-full p-2 border rounded border-gray-300 
-          focus:ring-blue-500 focus:border-blue-500 
-          ${validOptions.length === 0 ? 'bg-gray-100' : ''}`,
+        className: `w-full p-2 border rounded ${validOptions.length === 0 ? 'bg-gray-100' : ''} 
+          border-gray-300 focus:ring-blue-500 focus:border-blue-500`,
         value: value || '',
-        onChange: (e) => {
-          console.log(`${label} changed:`, e.target.value);
-          onChange(e.target.value);
-        },
+        onChange: (e) => onChange(e.target.value),
         disabled: validOptions.length === 0
       }, [
         createEmptyOption(),
@@ -680,95 +829,22 @@ const PumpConfigurator = () => {
     );
   };
 
-  const createAdditionalSectionFields = (index) => {
-    const currentSeriesData = seriesData[config.series];
-    const components = getAvailableComponents(currentSeriesData, config.type);
-
-    return React.createElement('div', {
-      key: `section-${index}`,
-      className: 'border-t pt-4 mt-4'
-    },
-      React.createElement('h4', {
-        className: 'font-medium mb-4'
-      }, `Section ${index + 2}`),
-      createSelectField(
-        `Gear Size - Section ${index + 2}`,
-        config.additionalGearSizes[index] || '',
-        components.gearHousings,
-        (value) => {
-          const newSizes = [...config.additionalGearSizes];
-          newSizes[index] = value;
-          setConfig({ ...config, additionalGearSizes: newSizes });
-        }
-      )
-    );
-  };
-
-  // Handle series change
-  const handleSeriesChange = (value) => {
-    console.log('Series changed to:', value);
-    const newSeriesData = seriesData[value];
-    
-    if (!newSeriesData) {
-      console.error(`No data available for series ${value}`);
-      setError(`No data available for series ${value}`);
-      return;
-    }
-
-    // Validate the series data
-    const validation = validateConfig({ series: value });
-    if (!validation.isValid) {
-      console.warn(`Validation failed for series ${value}:`, validation.errors);
-    }
-    
-    setConfig({
-      ...initialState,
-      series: value
-    });
-    setError(null);
-  };
-
-  // Handle type change
-  const handleTypeChange = (value) => {
-    console.log('Type changed to:', value);
-    setConfig({
-      ...config,
-      type: value,
-      secCode: '',
-      gearSize: '',
-      shaftStyle: '',
-      pecSelection: '',
-      bearingCarrierSelection: ''
-    });
-  };
-  // Continue from Part 4...
-
-  // Get current series data and components
   const currentSeriesData = seriesData[config.series];
   const components = currentSeriesData ? getAvailableComponents(currentSeriesData, config.type) : {};
 
   // Main render
   return React.createElement('div', { className: 'bg-white shadow rounded-lg max-w-4xl mx-auto' },
-    // Error Display
     error && React.createElement('div', {
       className: 'p-4 bg-red-50 border-l-4 border-red-400 text-red-700'
     }, error),
 
-    // Header
     React.createElement('div', { className: 'px-4 py-5 border-b border-gray-200' },
       React.createElement('h3', { className: 'text-2xl font-bold text-gray-900' },
         'Hydraulic Pump Configurator'
       )
     ),
 
-    // Loading State
-    loading && React.createElement('div', { 
-      className: 'p-4 text-center text-gray-500' 
-    }, 'Loading...'),
-
-    // Main Form
     React.createElement('div', { className: 'p-4 space-y-6' },
-      // Series Selection
       createSelectField(
         'Series',
         config.series,
@@ -792,9 +868,7 @@ const PumpConfigurator = () => {
         handleSeriesChange
       ),
 
-      // Continue only if series is selected
       config.series && currentSeriesData && React.createElement('div', { className: 'space-y-4' },
-        // Type Selection
         createSelectField(
           'Type',
           config.type,
@@ -805,9 +879,7 @@ const PumpConfigurator = () => {
           handleTypeChange
         ),
 
-        // Continue only if type is selected
         config.type && React.createElement('div', { className: 'space-y-4' },
-          // Pump Type
           createSelectField(
             'Pump Type',
             config.pumpType,
@@ -832,7 +904,6 @@ const PumpConfigurator = () => {
             }
           ),
 
-          // Rotation
           createSelectField(
             'Rotation',
             config.rotation,
@@ -840,7 +911,6 @@ const PumpConfigurator = () => {
             (value) => setConfig({ ...config, rotation: value })
           ),
 
-          // Shaft End Cover
           components.shaftEndCovers?.length > 0 && createSelectField(
             'Shaft End Cover',
             config.secCode,
@@ -848,7 +918,13 @@ const PumpConfigurator = () => {
             (value) => setConfig({ ...config, secCode: value })
           ),
 
-          // Gear Size
+          components.shaftStyles?.length > 0 && createSelectField(
+            'Shaft Style',
+            config.shaftStyle,
+            components.shaftStyles,
+            (value) => setConfig({ ...config, shaftStyle: value })
+          ),
+
           components.gearHousings?.length > 0 && createSelectField(
             'Gear Size',
             config.gearSize,
@@ -856,27 +932,6 @@ const PumpConfigurator = () => {
             (value) => setConfig({ ...config, gearSize: value })
           ),
 
-          // Shaft Style
-          currentSeriesData.shaftStyles?.length > 0 && createSelectField(
-            'Shaft Style',
-            config.shaftStyle,
-            currentSeriesData.shaftStyles,
-            (value) => setConfig({ ...config, shaftStyle: value })
-          ),
-
-          // Additional Sections
-          config.pumpType && config.pumpType !== 'single' && React.createElement(
-            'div',
-            { className: 'border-t pt-4 mt-4' },
-            React.createElement('h4', { 
-              className: 'font-medium mb-4 text-lg' 
-            }, 'Additional Sections'),
-            Array.from({
-              length: config.pumpType === 'tandem' ? 1 : config.pumpType === 'triple' ? 2 : 3
-            }).map((_, index) => createAdditionalSectionFields(index))
-          ),
-
-          // Port End Cover
           components.pecCovers?.length > 0 && createSelectField(
             'Port End Cover',
             config.pecSelection,
@@ -885,7 +940,6 @@ const PumpConfigurator = () => {
             true
           ),
 
-          // Bearing Carrier
           config.pumpType !== 'single' && components.bearingCarriers?.length > 0 && createSelectField(
             'Bearing Carrier',
             config.bearingCarrierSelection,
@@ -896,21 +950,21 @@ const PumpConfigurator = () => {
 
           // Model Code
           React.createElement('div', { className: 'mt-8 p-4 bg-gray-100 rounded' },
-            React.createElement('label', { 
-              className: 'block text-sm font-medium mb-2' 
+            React.createElement('h4', { 
+              className: 'text-sm font-medium mb-2'
             }, 'Model Code:'),
             React.createElement('div', { 
-              className: 'font-mono text-lg' 
+              className: 'font-mono text-lg'
             }, generateModelCode(config))
           ),
 
-          // BOM Table
-          bom.length > 0 && React.createElement('div', { className: 'mt-8 p-4' },
-            React.createElement('h3', { 
-              className: 'text-lg font-medium mb-4' 
+          // BOM Table with Copy Button
+          bom.length > 0 && React.createElement('div', { className: 'mt-8' },
+            React.createElement('h4', { 
+              className: 'text-lg font-medium mb-4'
             }, 'Bill of Materials'),
             React.createElement('div', { 
-              className: 'overflow-x-auto shadow ring-1 ring-black ring-opacity-5 rounded-lg' 
+              className: 'overflow-x-auto shadow ring-1 ring-black ring-opacity-5 rounded-lg'
             },
               React.createElement('table', { className: 'min-w-full divide-y divide-gray-300' },
                 React.createElement('thead', { className: 'bg-gray-50' },
