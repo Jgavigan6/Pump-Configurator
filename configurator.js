@@ -69,151 +69,121 @@ function findSectionContent(text, sectionName, includeSubsections = false) {
   return '';
 }
 
-function findAllDriveGearSets(markdown) {
-  const driveGearSets = [];
-  
-  // Find the main drive gear sections first
-  const mainSectionPatterns = [
-    /(?:^|\n)#+\s*Drive Gear Sets.*?(?=\n#+|$)/im,
-    /(?:^|\n)#+\s*Drive Gear Sets\s*-.*?(?=\n#+|$)/im,
-    /(?:^|\n)#+.*?Drive Gear.*?(?=\n#+|$)/im
-  ];
-
-  let mainSection = '';
-  for (const pattern of mainSectionPatterns) {
-    const match = markdown.match(pattern);
-    if (match) {
-      mainSection = match[0];
-      break;
-    }
-  }
-
-  if (!mainSection) {
-    // Try finding individual code sections if no main section found
-    const individualSections = markdown.match(/(?:^|\n)#+.*?Code.*?\d+.*?(?=\n#+|$)/gim) || [];
-    mainSection = individualSections.join('\n');
-  }
-
-  if (!mainSection) return driveGearSets;
-
-  // Enhanced subsection patterns
-  const subsectionPatterns = [
-    // Handle format: "### Code XX (Description)"
-    /###\s*Code\s+(\d+)\s*\((.*?)\).*?(?=###|\n#+|$)/gs,
-    // Handle format: "Code XX (Description)"
-    /(?:^|\n)Code\s+(\d+)\s*\((.*?)\).*?(?=\n(?:Code|###)|\n#+|$)/gm,
-    // Handle format: "Code XX - Description"
-    /(?:^|\n)Code\s+(\d+)\s*[-–]\s*(.*?)(?=\n(?:Code|###)|\n#+|$)/gm,
-    // Handle format: "### XX (Description)"
-    /###\s*(\d+)\s*\((.*?)\).*?(?=###|\n#+|$)/gs,
-    // Handle format: "XX (Description)"
-    /(?:^|\n)(\d+)\s*\((.*?)\).*?(?=\n(?:\d|Code|###)|\n#+|$)/gm
-  ];
-
-  subsectionPatterns.forEach(pattern => {
-    let match;
-    while ((match = pattern.exec(mainSection)) !== null) {
-      const code = match[1];
-      const description = match[2]?.replace(/[\(\)]/g, '').trim();
-      const sectionContent = match[0];
-      
-      // Extract shaft key if present
-      const shaftKeyMatch = sectionContent.match(/Shaft Key:\s*([A-Za-z0-9-]+)/);
-      
-      if (code && description && !driveGearSets.find(set => set.code === code)) {
-        driveGearSets.push({
-          code,
-          description,
-          content: sectionContent,
-          shaftKey: shaftKeyMatch ? shaftKeyMatch[1] : null
-        });
-      }
-    }
-  });
-
-  // Special handling for tabular format (some series use this)
-  if (driveGearSets.length === 0) {
-    const tableMatch = mainSection.match(/\|.*?\|.*?\|.*?\n\|[-\s|]*\n([\s\S]*?)(?=\n#+|$)/);
-    if (tableMatch) {
-      const rows = tableMatch[1].split('\n').filter(row => row.trim() && row.includes('|'));
-      rows.forEach(row => {
-        const cells = row.split('|').map(cell => cell.trim()).filter(Boolean);
-        if (cells.length >= 2) {
-          const code = cells[0].match(/^(\d+)/)?.[1];
-          const description = cells[cells.length - 1];
-          if (code && description) {
-            driveGearSets.push({
-              code,
-              description: description.replace(/[\(\)]/g, '').trim(),
-              content: row
-            });
-          }
-        }
-      });
-    }
-  }
-
-  // Debug logging
-  console.log(`Found ${driveGearSets.length} drive gear sets`);
-  driveGearSets.forEach(set => {
-    console.log(`- Code ${set.code}: ${set.description}`);
-  });
-
-  return driveGearSets;
-}
-
 function parseTableData(section) {
   if (!section) return [];
   
-  const lines = section.split('\n').filter(line => line.trim() && line.includes('|'));
+  const lines = section.split('\n')
+    .filter(line => line.trim() && line.includes('|'));
+  
   if (lines.length <= 2) return [];
 
-  // Handle both traditional markdown tables and variations
-  const tableStartIndex = lines.findIndex(line => line.includes('|'));
-  if (tableStartIndex === -1) return [];
-
-  return lines.slice(tableStartIndex + 2).map(line => {
+  // Skip header and separator rows
+  return lines.slice(2).map(line => {
     const cells = line.split('|')
       .map(cell => cell.trim())
       .filter((cell, index, arr) => index > 0 && index < arr.length - 1);
-    
-    // Handle different table formats
-    if (cells.length >= 2) {
-      return cells.length === 2 ? 
-        [cells[0], cells[1]] :
-        cells;
-    }
-    return null;
+    return cells.length ? cells : null;
   }).filter(Boolean);
 }
 
-function extractStyleInfo(section) {
-  if (!section) return null;
-  
-  const lines = section.split('\n');
-  const titleLine = lines[0];
-  
-  const patterns = [
-    /Code (\d+)\s*\((.*?)\)/i,
-    /Series Code (\d+)\s*\((.*?)\)/i,
-    /(\d+)\s*\((.*?)\)/,
-    /Code (\d+)/i,
-    /\((.+?)\).*?(\d+)/,
-    /###\s*Code\s+(\d+)\s*\((.*?)\)/i,
-    /Code\s+(\d+)\s*[-–]\s*(.*)/i
+function processGearSections(markdown) {
+  const driveGearSets = {};
+  const shaftStyles = [];
+  console.log('Starting to process gear sections...');
+
+  // Find all potential drive gear sections
+  const sectionPatterns = [
+    /### Drive Gear Sets.*?(?=###|$)/gs,
+    /Drive Gear Sets - .*?Series.*?(?=###|$)/gs,
+    /Code \d+.*?\(.*?\).*?(?=###|$)/gs,
+    /Drive Gear Sets.*?(?=###|$)/gs
   ];
 
-  for (const pattern of patterns) {
-    const match = titleLine.match(pattern);
-    if (match) {
-      return {
-        code: match[1],
-        description: (match[2] || match[1]).trim()
-      };
+  let sections = [];
+  for (const pattern of sectionPatterns) {
+    const matches = markdown.match(pattern);
+    if (matches) {
+      sections.push(...matches);
+      console.log(`Found ${matches.length} sections using pattern:`, pattern);
     }
   }
 
-  return null;
+  sections.forEach((section, index) => {
+    console.log(`Processing section ${index + 1}/${sections.length}`);
+    
+    // Try different header patterns
+    const headerPatterns = [
+      /Code (\d+)\s*[(-](.*?)(?=\n|\(|$)/i,
+      /Series Code (\d+)\s*[(-](.*?)(?=\n|\(|$)/i,
+      /### .*?Code (\d+)\s*[(-](.*?)(?=\n|\(|$)/i,
+      /(\d+)\s*[(-](.*?)(?=\n|\(|$)/i
+    ];
+
+    let code, description;
+    for (const pattern of headerPatterns) {
+      const match = section.match(pattern);
+      if (match) {
+        code = match[1];
+        description = match[2].replace(/[()]/g, '').trim();
+        console.log(`Found code ${code} with description: ${description}`);
+        break;
+      }
+    }
+
+    if (code) {
+      if (!driveGearSets[code]) {
+        driveGearSets[code] = {};
+        shaftStyles.push({ code, description });
+        console.log(`Added new shaft style: ${code} - ${description}`);
+      }
+
+      // Look for shaft key
+      const shaftKeyMatch = section.match(/Shaft Key:\s*([A-Za-z0-9-]+)/);
+      if (shaftKeyMatch) {
+        driveGearSets[code].shaftKey = shaftKeyMatch[1];
+        console.log(`Found shaft key for code ${code}: ${shaftKeyMatch[1]}`);
+      }
+
+      // Parse table data
+      const tableLines = section.split('\n')
+        .filter(line => line.includes('|'))
+        .filter(line => !line.includes('---'))
+        .slice(1); // Skip header row
+
+      console.log(`Found ${tableLines.length} table lines for code ${code}`);
+
+      tableLines.forEach(line => {
+        const cells = line.split('|')
+          .map(cell => cell.trim())
+          .filter(Boolean);
+
+        if (cells.length >= 2) {
+          const gearCode = cells[0];
+          const partNumber = cells[1];
+          
+          if (gearCode && partNumber && partNumber.toLowerCase() !== 'n/a') {
+            // Handle different code formats
+            const gearMatch = gearCode.match(/^(\d+)(?:-\d+)?$/);
+            if (gearMatch) {
+              const gearSize = gearMatch[1];
+              const key = `${gearSize}-${code}`;
+              driveGearSets[code][key] = partNumber;
+              console.log(`Added drive gear mapping: ${key} -> ${partNumber}`);
+            }
+          }
+        }
+      });
+    } else {
+      console.warn('No code found for section:', section.substring(0, 100));
+    }
+  });
+
+  console.log('Finished processing gear sections:', {
+    numDriveGearSets: Object.keys(driveGearSets).length,
+    numShaftStyles: shaftStyles.length
+  });
+
+  return { driveGearSets, shaftStyles };
 }
 async function parseMarkdownData(markdownText) {
   console.log('Starting to parse markdown data');
@@ -241,6 +211,10 @@ async function parseMarkdownData(markdownText) {
   // Find major sections
   const pumpSection = findSectionContent(cleanedMarkdown, 'Pump Components', true) || cleanedMarkdown;
   const motorSection = findSectionContent(cleanedMarkdown, 'Motor Components', true);
+  console.log('Found major sections:', {
+    hasPumpSection: !!pumpSection,
+    hasMotorSection: !!motorSection
+  });
 
   // Parse SEC sections with enhanced pattern matching
   const secPatterns = [
@@ -265,6 +239,7 @@ async function parseMarkdownData(markdownText) {
         description: description || code
       }))
       .filter(item => item.code && item.partNumber);
+    console.log(`Parsed ${data.shaftEndCovers.length} shaft end covers`);
   }
 
   // Parse Motor SEC
@@ -282,6 +257,7 @@ async function parseMarkdownData(markdownText) {
         description: description || code
       }))
       .filter(item => item.code && item.partNumber);
+    console.log(`Parsed ${data.motorShaftEndCovers.length} motor shaft end covers`);
   }
 
   // Parse PEC sections with enhanced pattern matching
@@ -306,6 +282,7 @@ async function parseMarkdownData(markdownText) {
         partNumber
       }))
       .filter(item => item.partNumber && item.description);
+    console.log(`Parsed ${data.pecCovers.length} PEC covers`);
   }
 
   let pecMotorContent = '';
@@ -321,6 +298,7 @@ async function parseMarkdownData(markdownText) {
         partNumber
       }))
       .filter(item => item.partNumber && item.description);
+    console.log(`Parsed ${data.motorPecCovers.length} motor PEC covers`);
   }
 
   // Parse gear housings with enhanced pattern matching
@@ -345,6 +323,7 @@ async function parseMarkdownData(markdownText) {
         description: description || 'Standard'
       }))
       .filter(item => item.code && item.partNumber);
+    console.log(`Parsed ${data.gearHousings.length} gear housings`);
   }
 
   let gearMotorContent = '';
@@ -361,65 +340,17 @@ async function parseMarkdownData(markdownText) {
         description: description || code
       }))
       .filter(item => item.code && item.partNumber);
+    console.log(`Parsed ${data.motorGearHousings.length} motor gear housings`);
   }
 
   // Process drive gear sets with enhanced parser
-  const driveGearSets = findAllDriveGearSets(cleanedMarkdown);
-  console.log('Found drive gear sets:', driveGearSets.length);
-  
-  driveGearSets.forEach(section => {
-    if (!data.driveGearSets[section.code]) {
-      data.driveGearSets[section.code] = {};
-    }
-
-    if (section.shaftKey) {
-      data.driveGearSets[section.code].shaftKey = section.shaftKey;
-    }
-
-    const tableData = parseTableData(section.content);
-    tableData.forEach(row => {
-      const [code, partNumber] = row;
-      if (code && partNumber && partNumber.toLowerCase() !== 'n/a') {
-        data.driveGearSets[section.code][code] = partNumber;
-      }
-    });
-
-    // Add to shaft styles if not already present
+  const { driveGearSets, shaftStyles } = processGearSections(cleanedMarkdown);
+  data.driveGearSets = driveGearSets;
+  data.shaftStyles = shaftStyles;
+  console.log('Processed drive gear sets and shaft styles:', {
+    numDriveGearSets: Object.keys(driveGearSets).length,
+    numShaftStyles: shaftStyles.length
   });
-
-  // Enhanced shaft style processing
-  data.shaftStyles = [];
-  
-  // Add styles from drive gear sets
-  driveGearSets.forEach(set => {
-    if (set.code && set.description && 
-        !data.shaftStyles.find(s => s.code === set.code)) {
-      data.shaftStyles.push({
-        code: set.code,
-        description: set.description
-      });
-    }
-  });
-
-  // Backup method: Look for any code sections that might define shaft styles
-  const shaftStylePatterns = [
-    /(?:Code|Style)\s+(\d+)\s*[-–(]\s*(.*?)(?=\n|$)/g,
-    /###\s*(\d+)\s*[-–(]\s*(.*?)(?=\n|$)/g
-  ];
-
-  shaftStylePatterns.forEach(pattern => {
-    let match;
-    while ((match = pattern.exec(cleanedMarkdown)) !== null) {
-      const code = match[1];
-      const description = match[2].replace(/[\(\)]/g, '').trim();
-      if (code && description && !data.shaftStyles.find(s => s.code === code)) {
-        data.shaftStyles.push({ code, description });
-      }
-    }
-  });
-
-  // Sort shaft styles by code
-  data.shaftStyles.sort((a, b) => parseInt(a.code) - parseInt(b.code));
 
   // Parse idler gear sets
   const idlerSection = findSectionContent(cleanedMarkdown, 'Idler Gear Sets');
@@ -431,6 +362,7 @@ async function parseMarkdownData(markdownText) {
         description: description || code
       }))
       .filter(item => item.code && item.partNumber);
+    console.log(`Parsed ${data.idlerGearSets.length} idler gear sets`);
   }
 
   // Parse bearing carriers
@@ -443,6 +375,7 @@ async function parseMarkdownData(markdownText) {
         commonNumber: commonNumber ? commonNumber.replace(/[()]/g, '').trim() : ''
       }))
       .filter(item => item.partNumber);
+    console.log(`Parsed ${data.bearingCarriers.length} bearing carriers`);
   }
 
   // Parse fasteners
@@ -459,6 +392,7 @@ async function parseMarkdownData(markdownText) {
         partNumber
       }))
       .filter(item => item.partNumber);
+    console.log(`Parsed ${data.fastenersSingle.length} single fasteners`);
   }
 
   if (fastenerSections.motor) {
@@ -468,6 +402,7 @@ async function parseMarkdownData(markdownText) {
         partNumber
       }))
       .filter(item => item.partNumber);
+    console.log(`Parsed ${data.motorFastenersSingle.length} motor single fasteners`);
   }
 
   // Parse multi-unit fasteners
@@ -479,6 +414,7 @@ async function parseMarkdownData(markdownText) {
         partNumber: partNumber.trim()
       }))
       .filter(item => item.partNumber);
+    console.log(`Parsed ${data.fastenersDoubles.length} doubles fasteners`);
   }
 
   const triplesSection = findSectionContent(cleanedMarkdown, 'Triples/Quads') ||
@@ -490,6 +426,7 @@ async function parseMarkdownData(markdownText) {
         partNumber: partNumber.trim()
       }))
       .filter(item => item.partNumber);
+    console.log(`Parsed ${data.fastenersTripleQuad.length} triples/quads fasteners`);
   }
 
   return data;
@@ -680,6 +617,7 @@ function generateBOM(config) {
   try {
     const addToBOM = (partNumber, quantity, description) => {
       if (partNumber && partNumber.toLowerCase() !== 'n/a') {
+        console.log(`Adding to BOM: ${partNumber} (${quantity}x) - ${description}`);
         bom.push({ partNumber, quantity, description });
         return true;
       }
@@ -730,6 +668,10 @@ function generateBOM(config) {
 
     // Add drive gear set and shaft key
     if (config.shaftStyle && config.gearSize) {
+      const driveGearKey = `${config.gearSize}-${config.shaftStyle}`;
+      console.log('Looking for drive gear with key:', driveGearKey);
+      console.log('Available drive gear sets:', currentSeriesData.driveGearSets);
+
       const driveGearSet = currentSeriesData.driveGearSets[config.shaftStyle];
       if (driveGearSet) {
         // Add shaft key if available
@@ -743,8 +685,9 @@ function generateBOM(config) {
         }
 
         // Add drive gear set
-        const driveGearKey = `${config.gearSize}-${config.shaftStyle}`;
         const driveGearPartNumber = driveGearSet[driveGearKey];
+        console.log('Found drive gear part number:', driveGearPartNumber);
+        
         if (driveGearPartNumber && driveGearPartNumber.toLowerCase() !== 'n/a') {
           const shaftStyle = currentSeriesData.shaftStyles?.find(s => s.code === config.shaftStyle);
           addToBOM(
@@ -752,7 +695,11 @@ function generateBOM(config) {
             1,
             `Drive Gear Set - ${config.gearSize}" with ${shaftStyle?.description || config.shaftStyle}`
           );
+        } else {
+          console.warn(`No valid part number found for drive gear key: ${driveGearKey}`);
         }
+      } else {
+        console.warn(`No drive gear set found for shaft style: ${config.shaftStyle}`);
       }
     }
 
@@ -765,9 +712,7 @@ function generateBOM(config) {
             addToBOM(
               idlerSet.partNumber,
               1,
-              `Idler Gear Set (Section ${index + 2}) - ${
-                idlerSet.description || `Size ${size}`
-              }`
+              `Idler Gear Set (Section ${index + 2}) - ${idlerSet.description || `Size ${size}`}`
             );
           }
         }
@@ -867,7 +812,9 @@ const PumpConfigurator = () => {
   React.useEffect(() => {
     if (config.type && config.series) {
       try {
+        console.log('Generating BOM with config:', config);
         const newBom = generateBOM(config);
+        console.log('Generated BOM:', newBom);
         setBom(newBom);
         setError(null);
       } catch (error) {
@@ -1078,12 +1025,15 @@ const PumpConfigurator = () => {
             (value) => setConfig({ ...config, secCode: value })
           ),
 
-          // Shaft Style - Show for all series
+          // Shaft Style
           components.shaftStyles?.length > 0 && createSelectField(
             'Shaft Style',
             config.shaftStyle,
             components.shaftStyles,
-            (value) => setConfig({ ...config, shaftStyle: value })
+            (value) => {
+              console.log('Setting shaft style to:', value);
+              setConfig({ ...config, shaftStyle: value });
+            }
           ),
 
           // Gear Size
