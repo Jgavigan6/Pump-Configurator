@@ -1,23 +1,29 @@
 console.log('Loading configurator...');
 
 let seriesData = {};
+const DEBUG = true;
+
+function debugLog(context, data, type = 'info') {
+  if (!DEBUG) return;
+  console[type === 'error' ? 'error' : type === 'warn' ? 'warn' : 'log'](`[${context}]:`, data);
+}
 
 const SERIES_FILES = {
-  '20': 'p20-complete-final.md',
-  '51': 'p51-complete-final.md',
-  '76': 'p76-complete-final.md',
-  '120': '120-series.md',
-  '131': '131-series.md',
-  '151': 'p151-tables.md',
-  '176': 'p176-tables.md',
-  '215': 'p215-tables.md',
-  '230': 'fgp230-tables.md',
-  '250': 'fgp250-tables.md',
-  '265': 'fgp265-tables.md',
-  '315': 'p315-complete-final.md',
-  '330': 'p330-complete-final.md',
-  '350': 'p350-complete-final.md',
-  '365': 'p365-complete-final.md'
+  '20': '20.md',
+  '51': '51.md', 
+  '76': '76.md',
+  '120': '120.md',
+  '131': '131.md',
+  '151': '151.md',
+  '176': '176.md', 
+  '215': '215.md',
+  '230': '230.md',
+  '250': '250.md',
+  '265': '265.md',
+  '315': '315.md',
+  '330': '330.md',
+  '350': '350.md',
+  '365': '365.md'
 };
 
 const DEFAULT_ROTATION_OPTIONS = [
@@ -31,163 +37,162 @@ const DEFAULT_ROTATION_OPTIONS = [
   { code: '9', description: 'Birotational motor with 1-1/4" NPT case drain without bearing' }
 ];
 
+async function loadSeriesData() {
+  try {
+    console.log('Starting to load series data...');
+    const loadedData = {};
+    
+    for (const [series, filename] of Object.entries(SERIES_FILES)) {
+      try {
+        console.log(`Attempting to load ${filename} for series ${series}`);
+        
+        const response = await fetch(filename);
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        const content = await response.text();
+        
+        if (!content || !content.trim()) {
+          throw new Error(`Empty content for ${filename}`);
+        }
+
+        const parsedData = parseMarkdownData(content);
+        console.log(`Successfully parsed data for series ${series}`);
+        loadedData[series] = parsedData;
+
+      } catch (error) {
+        console.error(`Failed to process ${filename}:`, error);
+      }
+    }
+
+    if (Object.keys(loadedData).length === 0) {
+      throw new Error('No series data could be loaded');
+    }
+
+    seriesData = loadedData;
+    console.log(`Successfully loaded ${Object.keys(loadedData).length} series`);
+    initializeConfigurator();
+
+  } catch (error) {
+    console.error('Error in loadSeriesData:', error);
+    document.getElementById('root').innerHTML = `
+      <div class="p-4 bg-red-100 border border-red-400 text-red-700 rounded">
+        <h3 class="font-bold mb-2">Error loading configurator data:</h3>
+        <p>Error: ${error.message}</p>
+        <p class="mt-2">Please ensure all files are accessible:</p>
+        <ul class="mt-1 text-sm list-disc list-inside">
+          ${Object.values(SERIES_FILES).map(f => `<li>${f}</li>`).join('\n')}
+        </ul>
+        <p class="mt-2 text-sm">Check console for detailed error messages.</p>
+      </div>
+    `;
+  }
+}
+
+// Clean and standardize markdown content
 function cleanMarkdownContent(content) {
-  return content
+  if (!content) return '';
+  return content.toString()
     .replace(/[\x00-\x09\x0B-\x1F\x7F]/g, '')
     .replace(/\r\n/g, '\n')
     .replace(/\r/g, '\n')
     .trim();
 }
 
-function findSectionContent(text, sectionName, includeSubsections = false) {
+// Extract section content by heading
+function findSectionContent(text, sectionName) {
   if (!text || !sectionName) return '';
-  
-  const patterns = [
-    new RegExp(`#+\\s*${sectionName}[\\s\\S]*?(?=\\n#+\\s|$)`, 'i'),
-    new RegExp(`#+\\s*${sectionName}.*?Series[\\s\\S]*?(?=\\n#+\\s|$)`, 'i'),
-    new RegExp(`#+\\s*${sectionName}.*?Pumps[\\s\\S]*?(?=\\n#+\\s|$)`, 'i'),
-    new RegExp(`#+\\s*${sectionName}.*?Motors[\\s\\S]*?(?=\\n#+\\s|$)`, 'i')
-  ];
-
-  for (const pattern of patterns) {
-    const match = text.match(pattern);
-    if (match) {
-      const content = match[0].trim();
-      if (!includeSubsections) {
-        const lines = content.split('\n');
-        const headerLevel = (lines[0].match(/^#+/) || ['#'])[0].length;
-        return lines
-          .filter((line, index) => 
-            index === 0 || !line.match(new RegExp(`^#{1,${headerLevel}}`)))
-          .join('\n')
-          .trim();
-      }
-      return content;
-    }
-  }
-  
-  return '';
+  const pattern = new RegExp(`##\\s*${sectionName}[\\s\\S]*?(?=\\n##\\s|$)`, 'i');
+  const match = text.match(pattern);
+  return match ? match[0].trim() : '';
 }
-
+// Parse table data from markdown section
 function parseTableData(section) {
   if (!section) return [];
-  
-  const lines = section.split('\n')
-    .filter(line => line.trim() && line.includes('|'));
-  
-  if (lines.length <= 2) return [];
 
-  // Skip header and separator rows
-  return lines.slice(2).map(line => {
-    const cells = line.split('|')
-      .map(cell => cell.trim())
-      .filter((cell, index, arr) => index > 0 && index < arr.length - 1);
-    return cells.length ? cells : null;
-  }).filter(Boolean);
+  try {
+    const lines = section.split('\n')
+      .map(line => line.trim())
+      .filter(line => line && line.includes('|'));
+
+    if (lines.length < 3) return []; // Need header, separator, and data
+
+    return lines.slice(2) // Skip header and separator
+      .map(line => {
+        const cells = line.split('|')
+          .map(cell => cell.trim())
+          .filter(cell => cell);
+        return cells.length >= 2 ? cells : null;
+      })
+      .filter(Boolean);
+  } catch (error) {
+    console.error('Error parsing table data:', error);
+    return [];
+  }
 }
 
+// Find drive gear sections
+function findDriveGearSections(content) {
+  if (!content) return [];
+  const mainPattern = /### Code \d+[^#]*?(?=###|$)/gs;
+  return (content.match(mainPattern) || []).map(section => section.trim());
+}
+
+// Process gear sections from markdown
 function processGearSections(markdown) {
   const driveGearSets = {};
   const shaftStyles = [];
-  console.log('Starting to process gear sections...');
+  const driveGearSection = findSectionContent(markdown, 'Drive Gear Sets');
+  
+  if (driveGearSection) {
+    const subSections = findDriveGearSections(driveGearSection);
+    subSections.forEach(section => {
+      const titleMatch = section.match(/### Code (\d+)\s*\((.*?)\)/);
+      if (titleMatch) {
+        const [_, code, description] = titleMatch;
+        
+        if (!driveGearSets[code]) {
+          driveGearSets[code] = {};
+        }
+        
+        if (!shaftStyles.find(s => s.code === code)) {
+          shaftStyles.push({ code, description: description.trim() });
+        }
 
-  // Find all potential drive gear sections
-  const sectionPatterns = [
-    /### Drive Gear Sets.*?(?=###|$)/gs,
-    /Drive Gear Sets - .*?Series.*?(?=###|$)/gs,
-    /Code \d+.*?\(.*?\).*?(?=###|$)/gs,
-    /Drive Gear Sets.*?(?=###|$)/gs
-  ];
+        const shaftKeyMatch = section.match(/Shaft Key:\s*([\w-]+)/);
+        if (shaftKeyMatch) {
+          driveGearSets[code].shaftKey = shaftKeyMatch[1];
+        }
 
-  let sections = [];
-  for (const pattern of sectionPatterns) {
-    const matches = markdown.match(pattern);
-    if (matches) {
-      sections.push(...matches);
-      console.log(`Found ${matches.length} sections using pattern:`, pattern);
-    }
-  }
-
-  sections.forEach((section, index) => {
-    console.log(`Processing section ${index + 1}/${sections.length}`);
-    
-    // Try different header patterns
-    const headerPatterns = [
-      /Code (\d+)\s*[(-](.*?)(?=\n|\(|$)/i,
-      /Series Code (\d+)\s*[(-](.*?)(?=\n|\(|$)/i,
-      /### .*?Code (\d+)\s*[(-](.*?)(?=\n|\(|$)/i,
-      /(\d+)\s*[(-](.*?)(?=\n|\(|$)/i
-    ];
-
-    let code, description;
-    for (const pattern of headerPatterns) {
-      const match = section.match(pattern);
-      if (match) {
-        code = match[1];
-        description = match[2].replace(/[()]/g, '').trim();
-        console.log(`Found code ${code} with description: ${description}`);
-        break;
-      }
-    }
-
-    if (code) {
-      if (!driveGearSets[code]) {
-        driveGearSets[code] = {};
-        shaftStyles.push({ code, description });
-        console.log(`Added new shaft style: ${code} - ${description}`);
-      }
-
-      // Look for shaft key
-      const shaftKeyMatch = section.match(/Shaft Key:\s*([A-Za-z0-9-]+)/);
-      if (shaftKeyMatch) {
-        driveGearSets[code].shaftKey = shaftKeyMatch[1];
-        console.log(`Found shaft key for code ${code}: ${shaftKeyMatch[1]}`);
-      }
-
-      // Parse table data
-      const tableLines = section.split('\n')
-        .filter(line => line.includes('|'))
-        .filter(line => !line.includes('---'))
-        .slice(1); // Skip header row
-
-      console.log(`Found ${tableLines.length} table lines for code ${code}`);
-
-      tableLines.forEach(line => {
-        const cells = line.split('|')
-          .map(cell => cell.trim())
-          .filter(Boolean);
-
-        if (cells.length >= 2) {
-          const gearCode = cells[0];
-          const partNumber = cells[1];
-          
+        parseTableData(section).forEach(([gearCode, partNumber]) => {
           if (gearCode && partNumber && partNumber.toLowerCase() !== 'n/a') {
-            // Handle different code formats
             const gearMatch = gearCode.match(/^(\d+)(?:-\d+)?$/);
             if (gearMatch) {
               const gearSize = gearMatch[1];
-              const key = `${gearSize}-${code}`;
-              driveGearSets[code][key] = partNumber;
-              console.log(`Added drive gear mapping: ${key} -> ${partNumber}`);
+              driveGearSets[code][`${gearSize}-${code}`] = partNumber;
             }
           }
-        }
-      });
-    } else {
-      console.warn('No code found for section:', section.substring(0, 100));
-    }
-  });
-
-  console.log('Finished processing gear sections:', {
-    numDriveGearSets: Object.keys(driveGearSets).length,
-    numShaftStyles: shaftStyles.length
-  });
+        });
+      }
+    });
+  }
 
   return { driveGearSets, shaftStyles };
 }
-async function parseMarkdownData(markdownText) {
-  console.log('Starting to parse markdown data');
-  
+
+// Parse bearing carriers section
+function parseBearingCarriers(section) {
+  if (!section) return [];
+  const tableData = parseTableData(section);
+  return tableData.map(([description, partNumber, commonNumber]) => ({
+    description: description.trim(),
+    partNumber: partNumber.trim(),
+    commonNumber: commonNumber ? commonNumber.replace(/[()]/g, '').trim() : ''
+  })).filter(item => item.partNumber);
+}
+
+// Parse all markdown data into structured format
+function parseMarkdownData(markdownText) {
   const cleanedMarkdown = cleanMarkdownContent(markdownText);
   
   const data = {
@@ -208,151 +213,71 @@ async function parseMarkdownData(markdownText) {
     rotationOptions: [...DEFAULT_ROTATION_OPTIONS]
   };
 
-  // Find major sections
-  const pumpSection = findSectionContent(cleanedMarkdown, 'Pump Components', true) || cleanedMarkdown;
-  const motorSection = findSectionContent(cleanedMarkdown, 'Motor Components', true);
-  console.log('Found major sections:', {
-    hasPumpSection: !!pumpSection,
-    hasMotorSection: !!motorSection
-  });
-
-  // Parse SEC sections with enhanced pattern matching
-  const secPatterns = [
-    'Shaft End Cover (SEC)',
-    'Shaft End Cover \\(SEC\\)',
-    'SEC.*Pumps',
-    'SEC.*Motors'
-  ];
-
-  let secPumpContent = '';
-  for (const pattern of secPatterns) {
-    secPumpContent = findSectionContent(pumpSection, pattern) || 
-                    findSectionContent(cleanedMarkdown, pattern);
-    if (secPumpContent) break;
-  }
-
-  if (secPumpContent) {
-    data.shaftEndCovers = parseTableData(secPumpContent)
+  // Process shaft end covers
+  const pumpSecContent = findSectionContent(cleanedMarkdown, 'Shaft End Cover \\(SEC\\) - Pumps') || 
+                        findSectionContent(cleanedMarkdown, 'Shaft End Cover \\(SEC\\)');
+  if (pumpSecContent) {
+    data.shaftEndCovers = parseTableData(pumpSecContent)
       .map(([code, partNumber, description]) => ({
         code,
         partNumber,
         description: description || code
       }))
       .filter(item => item.code && item.partNumber);
-    console.log(`Parsed ${data.shaftEndCovers.length} shaft end covers`);
   }
 
-  // Parse Motor SEC
-  let secMotorContent = '';
-  for (const pattern of secPatterns) {
-    secMotorContent = findSectionContent(motorSection, pattern);
-    if (secMotorContent) break;
-  }
-
-  if (secMotorContent) {
-    data.motorShaftEndCovers = parseTableData(secMotorContent)
+  // Process motor shaft end covers
+  const motorSecContent = findSectionContent(cleanedMarkdown, 'Shaft End Cover \\(SEC\\) - Motors');
+  if (motorSecContent) {
+    data.motorShaftEndCovers = parseTableData(motorSecContent)
       .map(([code, partNumber, description]) => ({
         code,
         partNumber,
         description: description || code
       }))
       .filter(item => item.code && item.partNumber);
-    console.log(`Parsed ${data.motorShaftEndCovers.length} motor shaft end covers`);
   }
 
-  // Parse PEC sections with enhanced pattern matching
-  const pecPatterns = [
-    'P.E.C Cover',
-    'Port End Cover',
-    'PEC Cover',
-    'Port End Covers'
-  ];
+  // Process PEC covers
+  const pecContent = findSectionContent(cleanedMarkdown, 'P\\.E\\.C Cover') || 
+                    findSectionContent(cleanedMarkdown, 'Port End Covers');
+  if (pecContent) {
+    const sections = pecContent.split(/##/);
+    let allPecCovers = [];
+    
+    sections.forEach(section => {
+      const tableData = parseTableData(section);
+      const covers = tableData
+        .map(([description, partNumber]) => ({
+          description: description.trim(),
+          partNumber: partNumber.trim()
+        }))
+        .filter(item => item.partNumber && item.description);
+      allPecCovers.push(...covers);
+    });
 
-  let pecPumpContent = '';
-  for (const pattern of pecPatterns) {
-    pecPumpContent = findSectionContent(pumpSection, pattern) || 
-                    findSectionContent(cleanedMarkdown, pattern);
-    if (pecPumpContent) break;
+    data.pecCovers = allPecCovers;
   }
 
-  if (pecPumpContent) {
-    data.pecCovers = parseTableData(pecPumpContent)
-      .map(([description, partNumber]) => ({
-        description,
-        partNumber
-      }))
-      .filter(item => item.partNumber && item.description);
-    console.log(`Parsed ${data.pecCovers.length} PEC covers`);
-  }
-
-  let pecMotorContent = '';
-  for (const pattern of pecPatterns) {
-    pecMotorContent = findSectionContent(motorSection, pattern);
-    if (pecMotorContent) break;
-  }
-
-  if (pecMotorContent) {
-    data.motorPecCovers = parseTableData(pecMotorContent)
-      .map(([description, partNumber]) => ({
-        description,
-        partNumber
-      }))
-      .filter(item => item.partNumber && item.description);
-    console.log(`Parsed ${data.motorPecCovers.length} motor PEC covers`);
-  }
-
-  // Parse gear housings with enhanced pattern matching
-  const gearPatterns = [
-    'Gear Housing',
-    'Gear Housing.*Pumps',
-    'Gear Housing.*Motors'
-  ];
-
-  let gearPumpContent = '';
-  for (const pattern of gearPatterns) {
-    gearPumpContent = findSectionContent(pumpSection, pattern) || 
-                     findSectionContent(cleanedMarkdown, pattern);
-    if (gearPumpContent) break;
-  }
-
-  if (gearPumpContent) {
-    data.gearHousings = parseTableData(gearPumpContent)
-      .map(([code, partNumber, description]) => ({
-        code,
-        partNumber,
-        description: description || 'Standard'
-      }))
-      .filter(item => item.code && item.partNumber);
-    console.log(`Parsed ${data.gearHousings.length} gear housings`);
-  }
-
-  let gearMotorContent = '';
-  for (const pattern of gearPatterns) {
-    gearMotorContent = findSectionContent(motorSection, pattern);
-    if (gearMotorContent) break;
-  }
-
-  if (gearMotorContent) {
-    data.motorGearHousings = parseTableData(gearMotorContent)
+  // Process gear housings
+  const gearContent = findSectionContent(cleanedMarkdown, 'Gear Housing') ||
+                     findSectionContent(cleanedMarkdown, 'Gear Housing - Pumps');
+  if (gearContent) {
+    data.gearHousings = parseTableData(gearContent)
       .map(([code, partNumber, description]) => ({
         code,
         partNumber,
         description: description || code
       }))
       .filter(item => item.code && item.partNumber);
-    console.log(`Parsed ${data.motorGearHousings.length} motor gear housings`);
   }
 
-  // Process drive gear sets with enhanced parser
+  // Process drive gear sets
   const { driveGearSets, shaftStyles } = processGearSections(cleanedMarkdown);
   data.driveGearSets = driveGearSets;
   data.shaftStyles = shaftStyles;
-  console.log('Processed drive gear sets and shaft styles:', {
-    numDriveGearSets: Object.keys(driveGearSets).length,
-    numShaftStyles: shaftStyles.length
-  });
 
-  // Parse idler gear sets
+  // Process idler gear sets
   const idlerSection = findSectionContent(cleanedMarkdown, 'Idler Gear Sets');
   if (idlerSection) {
     data.idlerGearSets = parseTableData(idlerSection)
@@ -362,151 +287,43 @@ async function parseMarkdownData(markdownText) {
         description: description || code
       }))
       .filter(item => item.code && item.partNumber);
-    console.log(`Parsed ${data.idlerGearSets.length} idler gear sets`);
   }
 
-  // Parse bearing carriers
+  // Process bearing carriers
   const bearingSection = findSectionContent(cleanedMarkdown, 'Bearing Carriers');
   if (bearingSection) {
-    data.bearingCarriers = parseTableData(bearingSection)
-      .map(([description, partNumber, commonNumber]) => ({
-        description,
-        partNumber,
-        commonNumber: commonNumber ? commonNumber.replace(/[()]/g, '').trim() : ''
-      }))
-      .filter(item => item.partNumber);
-    console.log(`Parsed ${data.bearingCarriers.length} bearing carriers`);
+    data.bearingCarriers = parseBearingCarriers(bearingSection);
   }
 
-  // Parse fasteners
-  const fastenerSections = {
-    pump: findSectionContent(cleanedMarkdown, 'Pump Fasteners - Single Units') ||
-          findSectionContent(cleanedMarkdown, 'Fasteners - Single Units'),
-    motor: findSectionContent(cleanedMarkdown, 'Motor Fasteners - Single Units')
-  };
-
-  if (fastenerSections.pump) {
-    data.fastenersSingle = parseTableData(fastenerSections.pump)
+  // Process fasteners
+  const singleFasteners = findSectionContent(cleanedMarkdown, 'Fasteners - Single Units');
+  if (singleFasteners) {
+    data.fastenersSingle = parseTableData(singleFasteners)
       .map(([code, partNumber]) => ({
         code,
         partNumber
       }))
       .filter(item => item.partNumber);
-    console.log(`Parsed ${data.fastenersSingle.length} single fasteners`);
-  }
-
-  if (fastenerSections.motor) {
-    data.motorFastenersSingle = parseTableData(fastenerSections.motor)
-      .map(([code, partNumber]) => ({
-        code,
-        partNumber
-      }))
-      .filter(item => item.partNumber);
-    console.log(`Parsed ${data.motorFastenersSingle.length} motor single fasteners`);
-  }
-
-  // Parse multi-unit fasteners
-  const doublesSection = findSectionContent(cleanedMarkdown, 'Doubles');
-  if (doublesSection) {
-    data.fastenersDoubles = parseTableData(doublesSection)
-      .map(([condition, partNumber]) => ({
-        condition: condition.trim(),
-        partNumber: partNumber.trim()
-      }))
-      .filter(item => item.partNumber);
-    console.log(`Parsed ${data.fastenersDoubles.length} doubles fasteners`);
-  }
-
-  const triplesSection = findSectionContent(cleanedMarkdown, 'Triples/Quads') ||
-                        findSectionContent(cleanedMarkdown, 'Triples');
-  if (triplesSection) {
-    data.fastenersTripleQuad = parseTableData(triplesSection)
-      .map(([condition, partNumber]) => ({
-        condition: condition.trim(),
-        partNumber: partNumber.trim()
-      }))
-      .filter(item => item.partNumber);
-    console.log(`Parsed ${data.fastenersTripleQuad.length} triples/quads fasteners`);
   }
 
   return data;
 }
-
-async function loadSeriesData() {
-  try {
-    console.log('Starting to load series data...');
-    const loadedData = {};
-    
-    for (const [series, filename] of Object.entries(SERIES_FILES)) {
-      try {
-        console.log(`Loading ${filename} for series ${series}...`);
-        const response = await fetch(filename);
-        
-        if (!response.ok) {
-          console.error(`Failed to load ${filename}: ${response.statusText}`);
-          continue;
-        }
-        
-        const content = await response.text();
-        if (!content.trim()) {
-          console.error(`Empty content for ${filename}`);
-          continue;
-        }
-
-        const parsedData = await parseMarkdownData(content);
-        
-        console.log(`Series ${series} loaded with:`, {
-          shaftEndCovers: parsedData.shaftEndCovers?.length || 0,
-          motorShaftEndCovers: parsedData.motorShaftEndCovers?.length || 0,
-          gearHousings: parsedData.gearHousings?.length || 0,
-          motorGearHousings: parsedData.motorGearHousings?.length || 0,
-          shaftStyles: parsedData.shaftStyles?.length || 0,
-          pecCovers: parsedData.pecCovers?.length || 0,
-          bearingCarriers: parsedData.bearingCarriers?.length || 0
-        });
-
-        loadedData[series] = parsedData;
-      } catch (error) {
-        console.error(`Error loading series ${series}:`, error);
-      }
-    }
-
-    if (Object.keys(loadedData).length === 0) {
-      throw new Error('No series data could be loaded');
-    }
-
-    seriesData = loadedData;
-    initializeConfigurator();
-  } catch (error) {
-    console.error('Error in loadSeriesData:', error);
-    document.getElementById('root').innerHTML = `
-      <div class="p-4 bg-red-100 border border-red-400 text-red-700 rounded">
-        <p>Error loading configurator data: ${error.message}</p>
-        <p class="mt-2 text-sm">Please check console for details.</p>
-      </div>
-    `;
-  }
-}
+// Calculate total gear width
 function calculateTotalGearWidth(config, currentSeriesData) {
   if (!currentSeriesData?.gearHousings || !config.gearSize) return 0;
 
   let totalWidth = 0;
-  
   const extractWidth = (description) => {
     if (!description) return null;
-
-    const patterns = [
-      /(\d+(?:\.\d+)?)"?-\s*[\d.]+\s*C\.I\.D\./i,
-      /(\d+(?:\.\d+)?)"(?=[\s-]|$)/,
-      /^(\d+(?:\.\d+)?)/,
-      /(\d+(?:\.\d+)?)/
-    ];
-
-    for (const pattern of patterns) {
-      const match = description.match(pattern);
-      if (match) {
-        const width = parseFloat(match[1]);
-        if (!isNaN(width) && width > 0) return width;
+    // Handle various dimension formats
+    const match = description.match(/(\d+(?:\/\d+)?|\d+(?:-\d+\/\d+)?)"?[-\s]/);
+    if (match) {
+      const fraction = match[1].replace('-', ' ');
+      try {
+        return Function(`'use strict'; return (${fraction})`)();
+      } catch (e) {
+        console.error('Error evaluating width:', e);
+        return null;
       }
     }
     return null;
@@ -532,42 +349,6 @@ function calculateTotalGearWidth(config, currentSeriesData) {
   return totalWidth;
 }
 
-function determineFastenerPartNumber(config, currentSeriesData, totalGearWidth) {
-  if (!currentSeriesData || !config.gearSize) return null;
-
-  try {
-    const fastenerSingleArray = config.type === 'M' && currentSeriesData.motorFastenersSingle?.length > 0
-      ? currentSeriesData.motorFastenersSingle
-      : currentSeriesData.fastenersSingle;
-
-    if (config.pumpType === 'single') {
-      const fastener = fastenerSingleArray?.find(f => f.code === config.gearSize);
-      return fastener?.partNumber;
-    }
-
-    const fastenersMulti = config.pumpType === 'tandem' ? 
-      currentSeriesData.fastenersDoubles : 
-      currentSeriesData.fastenersTripleQuad;
-
-    if (!fastenersMulti?.length) return null;
-
-    return fastenersMulti.find(f => {
-      const condition = f.condition.toLowerCase();
-      const widthMatch = condition.match(/(\d+(\.\d+)?)/);
-      if (!widthMatch) return false;
-      
-      const widthLimit = parseFloat(widthMatch[1]);
-      return condition.includes('less than') ? 
-        totalGearWidth < widthLimit : 
-        totalGearWidth >= widthLimit;
-    })?.partNumber;
-
-  } catch (error) {
-    console.error('Error determining fastener part number:', error);
-    return null;
-  }
-}
-
 function determineBearingCarrierQty(pumpType) {
   const qtyMap = {
     'single': 0,
@@ -579,12 +360,39 @@ function determineBearingCarrierQty(pumpType) {
   return qtyMap[pumpType?.toLowerCase()] || 0;
 }
 
+function determineFastenerPartNumber(config, currentSeriesData, totalGearWidth) {
+  if (!currentSeriesData || !config.gearSize) return null;
+
+  const fastenerArray = config.type === 'M' && currentSeriesData.motorFastenersSingle?.length > 0
+    ? currentSeriesData.motorFastenersSingle
+    : currentSeriesData.fastenersSingle;
+
+  if (config.pumpType === 'single') {
+    return fastenerArray?.find(f => f.code === config.gearSize)?.partNumber;
+  }
+
+  const fastenersMulti = config.pumpType === 'tandem' ? 
+    currentSeriesData.fastenersDoubles : 
+    currentSeriesData.fastenersTripleQuad;
+
+  if (!fastenersMulti?.length) return null;
+
+  return fastenersMulti.find(f => {
+    const widthMatch = f.condition.match(/(\d+(?:\.\d+)?)/);
+    if (!widthMatch) return false;
+    const widthLimit = parseFloat(widthMatch[1]);
+    return f.condition.includes('less than') ? 
+      totalGearWidth < widthLimit : 
+      totalGearWidth >= widthLimit;
+  })?.partNumber;
+}
+
 function generateModelCode(config) {
   if (!config.type || !config.series || !config.rotation || 
       !config.secCode || !config.gearSize || !config.shaftStyle) {
     return '';
   }
-  
+
   try {
     let code = `${config.type}${config.series}A${config.rotation}${config.secCode}`;
     code += config.portingCodes[0] || 'XXXX';
@@ -617,14 +425,13 @@ function generateBOM(config) {
   try {
     const addToBOM = (partNumber, quantity, description) => {
       if (partNumber && partNumber.toLowerCase() !== 'n/a') {
-        console.log(`Adding to BOM: ${partNumber} (${quantity}x) - ${description}`);
         bom.push({ partNumber, quantity, description });
         return true;
       }
       return false;
     };
 
-    // Get the correct components based on type and series
+    // Get appropriate component set
     const components = (is200Series || is300Series) && config.type === 'M' ?
       {
         shaftEndCovers: currentSeriesData.motorShaftEndCovers,
@@ -657,63 +464,41 @@ function generateBOM(config) {
       gearSizes.forEach((size, index) => {
         const housing = components.gearHousings?.find(h => h.code === size);
         if (housing) {
-          addToBOM(
-            housing.partNumber,
-            1,
-            `Gear Housing ${index === 0 ? '(Primary)' : `(Section ${index + 2})`} - ${housing.description}`
-          );
+          addToBOM(housing.partNumber, 1,
+            `Gear Housing ${index === 0 ? '(Primary)' : `(Section ${index + 2})`} - ${housing.description}`);
         }
       });
     }
 
     // Add drive gear set and shaft key
     if (config.shaftStyle && config.gearSize) {
-      const driveGearKey = `${config.gearSize}-${config.shaftStyle}`;
-      console.log('Looking for drive gear with key:', driveGearKey);
-      console.log('Available drive gear sets:', currentSeriesData.driveGearSets);
-
       const driveGearSet = currentSeriesData.driveGearSets[config.shaftStyle];
+      
       if (driveGearSet) {
-        // Add shaft key if available
         if (driveGearSet.shaftKey) {
           const shaftStyle = currentSeriesData.shaftStyles?.find(s => s.code === config.shaftStyle);
-          addToBOM(
-            driveGearSet.shaftKey,
-            1,
-            `Shaft Key for ${shaftStyle?.description || config.shaftStyle}`
-          );
+          addToBOM(driveGearSet.shaftKey, 1, 
+            `Shaft Key for ${shaftStyle?.description || config.shaftStyle}`);
         }
 
-        // Add drive gear set
+        const driveGearKey = `${config.gearSize}-${config.shaftStyle}`;
         const driveGearPartNumber = driveGearSet[driveGearKey];
-        console.log('Found drive gear part number:', driveGearPartNumber);
-        
-        if (driveGearPartNumber && driveGearPartNumber.toLowerCase() !== 'n/a') {
+        if (driveGearPartNumber) {
           const shaftStyle = currentSeriesData.shaftStyles?.find(s => s.code === config.shaftStyle);
-          addToBOM(
-            driveGearPartNumber,
-            1,
-            `Drive Gear Set - ${config.gearSize}" with ${shaftStyle?.description || config.shaftStyle}`
-          );
-        } else {
-          console.warn(`No valid part number found for drive gear key: ${driveGearKey}`);
+          addToBOM(driveGearPartNumber, 1,
+            `Drive Gear Set - ${config.gearSize}" with ${shaftStyle?.description || config.shaftStyle}`);
         }
-      } else {
-        console.warn(`No drive gear set found for shaft style: ${config.shaftStyle}`);
       }
     }
 
-    // Add idler gear sets for additional sections
+    // Add idler gear sets for multi-section units
     if (config.pumpType !== 'single' && config.additionalGearSizes) {
       config.additionalGearSizes.forEach((size, index) => {
         if (size) {
           const idlerSet = currentSeriesData.idlerGearSets?.find(set => set.code === size);
           if (idlerSet) {
-            addToBOM(
-              idlerSet.partNumber,
-              1,
-              `Idler Gear Set (Section ${index + 2}) - ${idlerSet.description || `Size ${size}`}`
-            );
+            addToBOM(idlerSet.partNumber, 1,
+              `Idler Gear Set (Section ${index + 2}) - ${idlerSet.description || `Size ${size}`}`);
           }
         }
       });
@@ -723,30 +508,24 @@ function generateBOM(config) {
     if (config.pecSelection) {
       const pecCover = components.pecCovers?.find(pec => pec.partNumber === config.pecSelection);
       if (pecCover) {
-        addToBOM(
-          pecCover.partNumber,
-          1,
-          `PEC Cover - ${pecCover.description}`
-        );
+        addToBOM(pecCover.partNumber, 1, `PEC Cover - ${pecCover.description}`);
       }
     }
 
-    // Add bearing carrier for multi-section pumps
-    if (['tandem', 'triple', 'quad'].includes(config.pumpType) && config.bearingCarrierSelection) {
-      const qty = determineBearingCarrierQty(config.pumpType);
-      const bearingCarrier = currentSeriesData.bearingCarriers?.find(
-        bc => bc.partNumber === config.bearingCarrierSelection
-      );
-      
-      if (bearingCarrier && qty > 0) {
-        addToBOM(
-          bearingCarrier.partNumber,
-          qty,
-          `Bearing Carrier - ${bearingCarrier.description}${
-            bearingCarrier.commonNumber ? ` (${bearingCarrier.commonNumber})` : ''
-          }`
-        );
-      }
+    // Add bearing carrier for multi-section units
+    if (['tandem', 'triple', 'quad'].includes(config.pumpType) && config.bearingCarrierSelections) {
+      config.bearingCarrierSelections.forEach((selection, index) => {
+        if (selection) {
+          const bearingCarrier = currentSeriesData.bearingCarriers?.find(
+            bc => bc.partNumber === selection
+          );
+          
+          if (bearingCarrier) {
+            addToBOM(bearingCarrier.partNumber, 1,
+              `Bearing Carrier (Section ${index + 2}) - ${bearingCarrier.description}`);
+          }
+        }
+      });
     }
 
     // Add fasteners
@@ -756,16 +535,13 @@ function generateBOM(config) {
       
       if (fastenerPartNumber) {
         const fastenerQty = config.series === '76' ? 8 : 4;
-        addToBOM(
-          fastenerPartNumber,
-          fastenerQty,
-          `Fastener${fastenerQty > 4 ? 's' : ''} for ${config.pumpType || 'single'} unit`
-        );
+        addToBOM(fastenerPartNumber, fastenerQty,
+          `Fastener${fastenerQty > 4 ? 's' : ''} for ${config.pumpType || 'single'} unit`);
       }
     }
 
     // Add small parts kit
-    if (config.type && config.pumpType) {
+    if (config.type && config.pumpType && config.series) {
       const pumpTypeNumber = {
         'single': '1',
         'tandem': '2',
@@ -774,11 +550,8 @@ function generateBOM(config) {
       }[config.pumpType];
       
       if (pumpTypeNumber) {
-        addToBOM(
-          `${config.type}${config.series}-${pumpTypeNumber}`,
-          1,
-          'Small Parts Kit'
-        );
+        const smallPartsKit = `${config.type}${config.series}-${pumpTypeNumber}`;
+        addToBOM(smallPartsKit, 1, 'Small Parts Kit');
       }
     }
 
@@ -788,33 +561,32 @@ function generateBOM(config) {
 
   return bom;
 }
+// Main React Component
 const PumpConfigurator = () => {
   const initialState = {
-    type: '',
     series: '',
-    pumpType: '',
+    type: '',
+    pumpType: 'single',
     rotation: '',
     secCode: '',
     gearSize: '',
     shaftStyle: '',
-    additionalGearSizes: [],
-    portingCodes: [''],
-    additionalPortingCodes: [],
     pecSelection: '',
-    bearingCarrierSelection: ''
+    bearingCarrierSelections: [], // Array for multiple bearing carriers
+    portingCodes: [''],
+    additionalGearSizes: [],
+    additionalPortingCodes: []
   };
 
   const [config, setConfig] = React.useState(initialState);
   const [bom, setBom] = React.useState([]);
   const [error, setError] = React.useState(null);
 
-  // Effects
+  // Update BOM when configuration changes
   React.useEffect(() => {
     if (config.type && config.series) {
       try {
-        console.log('Generating BOM with config:', config);
         const newBom = generateBOM(config);
-        console.log('Generated BOM:', newBom);
         setBom(newBom);
         setError(null);
       } catch (error) {
@@ -826,37 +598,30 @@ const PumpConfigurator = () => {
     }
   }, [config]);
 
+  // Get available components
   const getAvailableComponents = (seriesData, type) => {
     if (!seriesData) return {};
 
     const isMotor = type === 'M';
     console.log(`Getting components for ${isMotor ? 'motor' : 'pump'} type`);
 
-    const components = {
+    return {
       shaftEndCovers: isMotor ? seriesData.motorShaftEndCovers || [] : seriesData.shaftEndCovers || [],
       gearHousings: isMotor ? seriesData.motorGearHousings || [] : seriesData.gearHousings || [],
       pecCovers: isMotor ? seriesData.motorPecCovers || [] : seriesData.pecCovers || [],
       bearingCarriers: seriesData.bearingCarriers || [],
       shaftStyles: seriesData.shaftStyles || []
     };
-
-    console.log('Available components:', {
-      shaftEndCovers: components.shaftEndCovers.length,
-      gearHousings: components.gearHousings.length,
-      pecCovers: components.pecCovers.length,
-      bearingCarriers: components.bearingCarriers.length,
-      shaftStyles: components.shaftStyles.length
-    });
-
-    return components;
   };
 
+  // Create empty option
   const createEmptyOption = () => React.createElement(
     'option',
     { value: '', key: 'empty' },
     '-- Select --'
   );
 
+  // Create select field
   const createSelectField = (label, value, options, onChange, isPecSelect = false) => {
     if (!Array.isArray(options)) {
       console.warn(`No options provided for ${label}`);
@@ -901,16 +666,9 @@ const PumpConfigurator = () => {
     );
   };
 
+  // Handle series change
   const handleSeriesChange = (value) => {
     console.log('Series changed to:', value);
-    const newSeriesData = seriesData[value];
-    
-    if (!newSeriesData) {
-      console.error(`No data available for series ${value}`);
-      setError(`No data available for series ${value}`);
-      return;
-    }
-
     setConfig({
       ...initialState,
       series: value
@@ -918,6 +676,7 @@ const PumpConfigurator = () => {
     setError(null);
   };
 
+  // Handle type change
   const handleTypeChange = (value) => {
     console.log('Type changed to:', value);
     setConfig({
@@ -927,47 +686,57 @@ const PumpConfigurator = () => {
       gearSize: '',
       shaftStyle: '',
       pecSelection: '',
-      bearingCarrierSelection: ''
+      bearingCarrierSelections: []
     });
+  };
+
+  // Handle pump type change
+  const handlePumpTypeChange = (value) => {
+    const newConfig = { ...config, pumpType: value };
+    if (value === 'single') {
+      newConfig.additionalGearSizes = [];
+      newConfig.additionalPortingCodes = [];
+      newConfig.bearingCarrierSelections = [];
+    } else {
+      const count = value === 'tandem' ? 1 : value === 'triple' ? 2 : 3;
+      newConfig.additionalGearSizes = Array(count).fill('');
+      newConfig.additionalPortingCodes = Array(count).fill('');
+      newConfig.bearingCarrierSelections = Array(count).fill('');
+    }
+    setConfig(newConfig);
+  };
+
+  // Handle bearing carrier selection
+  const handleBearingCarrierChange = (value, index) => {
+    const newSelections = [...config.bearingCarrierSelections];
+    newSelections[index] = value;
+    setConfig({ ...config, bearingCarrierSelections: newSelections });
   };
 
   const currentSeriesData = seriesData[config.series];
   const components = currentSeriesData ? getAvailableComponents(currentSeriesData, config.type) : {};
 
   // Main render
-  return React.createElement('div', { className: 'bg-white shadow rounded-lg max-w-4xl mx-auto' },
+  return React.createElement('div', { className: 'bg-white shadow rounded-lg max-w-4xl mx-auto p-4' },
     error && React.createElement('div', {
-      className: 'p-4 bg-red-50 border-l-4 border-red-400 text-red-700'
+      className: 'p-4 mb-4 bg-red-50 border-l-4 border-red-400 text-red-700'
     }, error),
 
-    React.createElement('div', { className: 'px-4 py-5 border-b border-gray-200' },
-      React.createElement('h3', { className: 'text-2xl font-bold text-gray-900' },
-        'Hydraulic Pump Configurator'
-      )
+    React.createElement('div', { className: 'mb-6' },
+      React.createElement('h1', { 
+        className: 'text-2xl font-bold text-gray-900'
+      }, 'Hydraulic Pump Configurator')
     ),
 
-    React.createElement('div', { className: 'p-4 space-y-6' },
+    React.createElement('form', { className: 'space-y-6' },
       // Series Selection
       createSelectField(
         'Series',
         config.series,
-        [
-          { value: '20', label: '20 Series' },
-          { value: '51', label: '51 Series' },
-          { value: '76', label: '76 Series' },
-          { value: '120', label: '120 Series' },
-          { value: '131', label: '131 Series' },
-          { value: '151', label: '151 Series' },
-          { value: '176', label: '176 Series' },
-          { value: '215', label: '215 Series' },
-          { value: '230', label: '230 Series' },
-          { value: '250', label: '250 Series' },
-          { value: '265', label: '265 Series' },
-          { value: '315', label: '315 Series' },
-          { value: '330', label: '330 Series' },
-          { value: '350', label: '350 Series' },
-          { value: '365', label: '365 Series' }
-        ],
+        Object.keys(SERIES_FILES).map(series => ({
+          value: series,
+          label: `${series} Series`
+        })),
         handleSeriesChange
       ),
 
@@ -977,16 +746,16 @@ const PumpConfigurator = () => {
           'Type',
           config.type,
           [
-            { value: 'P', label: 'Pump (P)' }, 
+            { value: 'P', label: 'Pump (P)' },
             { value: 'M', label: 'Motor (M)' }
           ],
           handleTypeChange
         ),
 
         config.type && React.createElement('div', { className: 'space-y-4' },
-          // Pump Type
+          // Configuration fields
           createSelectField(
-            'Pump Type',
+            'Configuration',
             config.pumpType,
             [
               { value: 'single', label: 'Single' },
@@ -994,19 +763,7 @@ const PumpConfigurator = () => {
               { value: 'triple', label: 'Triple' },
               { value: 'quad', label: 'Quad' }
             ],
-            (value) => {
-              const newConfig = { ...config, pumpType: value };
-              if (value === 'single') {
-                newConfig.additionalGearSizes = [];
-                newConfig.additionalPortingCodes = [];
-                newConfig.bearingCarrierSelection = '';
-              } else {
-                const count = value === 'tandem' ? 1 : value === 'triple' ? 2 : 3;
-                newConfig.additionalGearSizes = Array(count).fill('');
-                newConfig.additionalPortingCodes = Array(count).fill('');
-              }
-              setConfig(newConfig);
-            }
+            handlePumpTypeChange
           ),
 
           // Rotation
@@ -1025,23 +782,20 @@ const PumpConfigurator = () => {
             (value) => setConfig({ ...config, secCode: value })
           ),
 
-          // Shaft Style
-          components.shaftStyles?.length > 0 && createSelectField(
-            'Shaft Style',
-            config.shaftStyle,
-            components.shaftStyles,
-            (value) => {
-              console.log('Setting shaft style to:', value);
-              setConfig({ ...config, shaftStyle: value });
-            }
-          ),
-
           // Gear Size
           components.gearHousings?.length > 0 && createSelectField(
             'Gear Size',
             config.gearSize,
             components.gearHousings,
             (value) => setConfig({ ...config, gearSize: value })
+          ),
+
+          // Shaft Style
+          components.shaftStyles?.length > 0 && createSelectField(
+            'Shaft Style',
+            config.shaftStyle,
+            components.shaftStyles,
+            (value) => setConfig({ ...config, shaftStyle: value })
           ),
 
           // Port End Cover
@@ -1053,60 +807,78 @@ const PumpConfigurator = () => {
             true
           ),
 
-          // Bearing Carrier - Only show for multi-section pumps
-          ['tandem', 'triple', 'quad'].includes(config.pumpType) && 
-          components.bearingCarriers?.length > 0 && createSelectField(
-            'Bearing Carrier',
-            config.bearingCarrierSelection,
-            components.bearingCarriers,
-            (value) => setConfig({ ...config, bearingCarrierSelection: value }),
-            true
+          // Additional sections for multi-section units
+          config.pumpType !== 'single' && config.additionalGearSizes?.map((size, index) => 
+            React.createElement('div', { 
+              key: `section-${index + 2}`,
+              className: 'mt-4 p-4 bg-gray-50 rounded'
+            },
+              React.createElement('h3', { className: 'text-lg font-medium mb-4' },
+                `Section ${index + 2} Configuration`
+              ),
+              createSelectField(
+                `Gear Size - Section ${index + 2}`,
+                size,
+                components.gearHousings,
+                (value) => {
+                  const newSizes = [...config.additionalGearSizes];
+                  newSizes[index] = value;
+                  setConfig({ ...config, additionalGearSizes: newSizes });
+                }
+              ),
+              // Add bearing carrier selection for each additional section
+              components.bearingCarriers?.length > 0 && createSelectField(
+                `Bearing Carrier - Section ${index + 2}`,
+                config.bearingCarrierSelections[index] || '',
+                components.bearingCarriers,
+                (value) => handleBearingCarrierChange(value, index),
+                true
+              )
+            )
           ),
 
-          // Model Code
+          // Model Code Display
           React.createElement('div', { className: 'mt-8 p-4 bg-gray-100 rounded' },
-            React.createElement('h4', { 
-              className: 'text-sm font-medium mb-2'
-            }, 'Model Code:'),
-            React.createElement('div', { 
-              className: 'font-mono text-lg'
-            }, generateModelCode(config))
+            React.createElement('h4', { className: 'text-sm font-medium mb-2' },
+              'Model Code:'
+            ),
+            React.createElement('div', { className: 'font-mono text-lg' },
+              generateModelCode(config)
+            )
           ),
 
           // BOM Table
           bom.length > 0 && React.createElement('div', { className: 'mt-8' },
-            React.createElement('h4', { 
-              className: 'text-lg font-medium mb-4'
-            }, 'Bill of Materials'),
-            React.createElement('div', { 
-              className: 'overflow-x-auto shadow ring-1 ring-black ring-opacity-5 rounded-lg'
-            },
+            React.createElement('h4', { className: 'text-lg font-medium mb-4' },
+              'Bill of Materials'
+            ),
+            React.createElement('div', { className: 'overflow-x-auto shadow ring-1 ring-black ring-opacity-5 rounded-lg' },
               React.createElement('table', { className: 'min-w-full divide-y divide-gray-300' },
                 React.createElement('thead', { className: 'bg-gray-50' },
                   React.createElement('tr', null,
-                    React.createElement('th', { 
-                      className: 'py-3.5 pl-4 pr-3 text-left text-sm font-semibold text-gray-900'
-                    }, 'Part Number'),
-                    React.createElement('th', { 
-                      className: 'px-3 py-3.5 text-left text-sm font-semibold text-gray-900'
-                    }, 'Qty'),
-                    React.createElement('th', { 
-                      className: 'px-3 py-3.5 text-left text-sm font-semibold text-gray-900'
-                    }, 'Description')
+                    React.createElement('th', { className: 'py-3.5 pl-4 pr-3 text-left text-sm font-semibold text-gray-900' },
+                      'Part Number'
+                    ),
+                    React.createElement('th', { className: 'px-3 py-3.5 text-left text-sm font-semibold text-gray-900' },
+                      'Qty'
+                    ),
+                    React.createElement('th', { className: 'px-3 py-3.5 text-left text-sm font-semibold text-gray-900' },
+                      'Description'
+                    )
                   )
                 ),
                 React.createElement('tbody', { className: 'divide-y divide-gray-200 bg-white' },
                   bom.map((item, index) =>
                     React.createElement('tr', { key: `bom-${index}` },
-                      React.createElement('td', { 
-                        className: 'whitespace-nowrap py-4 pl-4 pr-3 text-sm font-medium text-gray-900'
-                      }, item.partNumber),
-                      React.createElement('td', { 
-                        className: 'whitespace-nowrap px-3 py-4 text-sm text-gray-500'
-                      }, item.quantity),
-                      React.createElement('td', { 
-                        className: 'whitespace-normal px-3 py-4 text-sm text-gray-500'
-                      }, item.description)
+                      React.createElement('td', { className: 'whitespace-nowrap py-4 pl-4 pr-3 text-sm font-medium text-gray-900' },
+                        item.partNumber
+                      ),
+                      React.createElement('td', { className: 'whitespace-nowrap px-3 py-4 text-sm text-gray-500' },
+                        item.quantity
+                      ),
+                      React.createElement('td', { className: 'whitespace-normal px-3 py-4 text-sm text-gray-500' },
+                        item.description
+                      )
                     )
                   )
                 )
@@ -1115,11 +887,12 @@ const PumpConfigurator = () => {
             React.createElement('div', { className: 'mt-4 flex justify-end' },
               React.createElement('button', {
                 className: 'px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2',
-                onClick: () => {
+                onClick: (e) => {
+                  e.preventDefault();
                   const rows = bom.map(item => `${item.partNumber}\t${item.quantity}`).join('\n');
                   navigator.clipboard.writeText(rows);
                 }
-              }, 'Copy Part Numbers and Quantity')
+              }, 'Copy Part Numbers and Quantities')
             )
           )
         )
@@ -1128,8 +901,16 @@ const PumpConfigurator = () => {
   );
 };
 
+// Initialize configurator
 function initializeConfigurator() {
-  ReactDOM.render(React.createElement(PumpConfigurator), document.getElementById('root'));
+  ReactDOM.render(
+    React.createElement(PumpConfigurator),
+    document.getElementById('root')
+  );
 }
 
-window.onload = loadSeriesData;
+// Start loading on page load
+window.addEventListener('load', () => {
+  console.log('Window loaded, starting configurator initialization...');
+  loadSeriesData();
+});
