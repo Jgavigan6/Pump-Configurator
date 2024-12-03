@@ -5,27 +5,25 @@ const DEBUG = true;
 
 function debugLog(context, data, type = 'info') {
   if (!DEBUG) return;
-  const timestamp = new Date().toISOString();
-  const prefix = `[${timestamp}] [${String(type).toUpperCase()}] ${context}: `;
-  console[type === 'error' ? 'error' : type === 'warn' ? 'warn' : 'log'](prefix, data);
+  console[type === 'error' ? 'error' : type === 'warn' ? 'warn' : 'log'](`[${context}]:`, data);
 }
 
 const SERIES_FILES = {
-  '20': './20.md',
-  '51': './51.md',
-  '76': './76.md',
-  '120': './120.md',
-  '131': './131.md',
-  '151': './151.md',
-  '176': './176.md',
-  '215': './215.md',
-  '230': './230.md',
-  '250': './250.md',
-  '265': './265.md',
-  '315': './315.md',
-  '330': './330.md',
-  '350': './350.md',
-  '365': './365.md'
+  '20': '20.md',
+  '51': '51.md',
+  '76': '76.md',
+  '120': '120.md',
+  '131': '131.md',
+  '151': '151.md',
+  '176': '176.md',
+  '215': '215.md',
+  '230': '230.md',
+  '250': '250.md',
+  '265': '265.md',
+  '315': '315.md',
+  '330': '330.md',
+  '350': '350.md',
+  '365': '365.md'
 };
 
 const DEFAULT_ROTATION_OPTIONS = [
@@ -39,8 +37,84 @@ const DEFAULT_ROTATION_OPTIONS = [
   { code: '9', description: 'Birotational motor with 1-1/4" NPT case drain without bearing' }
 ];
 
+async function testFile(filename) {
+  try {
+    const content = await window.fs.readFile(filename);
+    console.log(`Successfully read ${filename}`);
+    console.log('Content preview:', content.toString().substring(0, 100));
+    return true;
+  } catch (error) {
+    console.error(`Error reading ${filename}:`, error);
+    return false;
+  }
+}
+
+// First, update how we read files
+async function loadSeriesData() {
+  try {
+    console.log('Starting to load series data...');
+    const loadedData = {};
+    
+    for (const [series, filename] of Object.entries(SERIES_FILES)) {
+      try {
+        console.log(`Attempting to load ${filename} for series ${series}`);
+        
+        try {
+          // Use fetch instead of window.fs
+          const response = await fetch(filename);
+          if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+          }
+          const content = await response.text();
+          
+          if (!content || !content.trim()) {
+            throw new Error(`Empty content for ${filename}`);
+          }
+
+          const parsedData = await parseMarkdownData(content);
+          console.log(`Successfully parsed data for series ${series}`);
+          loadedData[series] = parsedData;
+
+        } catch (readError) {
+          console.error(`Error reading ${filename}:`, readError);
+        }
+
+      } catch (error) {
+        console.error(`Failed to process ${filename}:`, error);
+      }
+    }
+
+    if (Object.keys(loadedData).length === 0) {
+      throw new Error('No series data could be loaded');
+    }
+
+    seriesData = loadedData;
+    console.log(`Successfully loaded ${Object.keys(loadedData).length} series`);
+    initializeConfigurator();
+
+  } catch (error) {
+    console.error('Error in loadSeriesData:', error);
+    document.getElementById('root').innerHTML = `
+      <div class="p-4 bg-red-100 border border-red-400 text-red-700 rounded">
+        <h3 class="font-bold mb-2">Error loading configurator data:</h3>
+        <p>Error: ${error.message}</p>
+        <p class="mt-2">Please ensure all files are accessible:</p>
+        <ul class="mt-1 text-sm list-disc list-inside">
+          ${Object.values(SERIES_FILES).map(f => `<li>${f}</li>`).join('\n')}
+        </ul>
+        <p class="mt-2 text-sm">Check console for detailed error messages.</p>
+      </div>
+    `;
+  }
+}
+// Helper functions for parsing and processing
 function cleanMarkdownContent(content) {
-  return content.toString().replace(/[\x00-\x09\x0B-\x1F\x7F]/g, '').replace(/\r\n/g, '\n').replace(/\r/g, '\n').trim();
+  if (!content) return '';
+  return content.toString()
+    .replace(/[\x00-\x09\x0B-\x1F\x7F]/g, '')
+    .replace(/\r\n/g, '\n')
+    .replace(/\r/g, '\n')
+    .trim();
 }
 
 function findSectionContent(text, sectionName) {
@@ -56,91 +130,29 @@ function parseTableData(section) {
     const lines = section.split('\n')
       .map(line => line.trim())
       .filter(line => line && line.includes('|'));
+
     if (lines.length < 2) return [];
+
     return lines.slice(2)
-      .map(line => line.split('|')
-        .map(cell => cell.trim())
-        .filter((cell, index, arr) => index > 0 && index < arr.length - 1))
-      .filter(cells => cells.length);
+      .map(line => {
+        const cells = line.split('|')
+          .map(cell => cell.trim())
+          .filter((cell, index, arr) => index > 0 && index < arr.length - 1);
+        return cells.length ? cells : null;
+      })
+      .filter(Boolean);
   } catch (error) {
-    debugLog('Error', `Error parsing table data: ${error.message}`, 'error');
+    console.error('Error parsing table data:', error);
     return [];
   }
 }
 
 function findDriveGearSections(content) {
   if (!content) return [];
-  const pattern = /### Code \d+[^#]*?(?=###|$)/gs;
-  return (content.match(pattern) || []).map(section => section.trim());
+  const mainPattern = /### Code \d+[^#]*?(?=###|$)/gs;
+  return (content.match(mainPattern) || []).map(section => section.trim());
 }
 
-async function loadSeriesData() {
-  try {
-    debugLog('Loading', 'Starting to load series data...');
-    const loadedData = {};
-    
-    for (const [series, filename] of Object.entries(SERIES_FILES)) {
-      try {
-        debugLog('Series Loading', `Loading series ${series} from ${filename}`);
-        
-        let content;
-        try {
-          const buffer = await window.fs.readFile(filename);
-          content = buffer.toString();
-          debugLog('File Read', `Successfully read ${filename} as buffer`);
-        } catch (bufferError) {
-          debugLog('Buffer Read Failed', `Failed to read ${filename} as buffer: ${bufferError.message}`);
-          content = await window.fs.readFile(filename, 'utf8');
-          debugLog('File Read', `Successfully read ${filename} directly`);
-        }
-
-        if (!content) {
-          throw new Error(`No content read from ${filename}`);
-        }
-
-        const cleanContent = content.toString().trim();
-        if (!cleanContent) {
-          throw new Error(`Empty content in ${filename}`);
-        }
-
-        const parsedData = await parseMarkdownData(cleanContent);
-        debugLog('Parsing', `Successfully parsed data for series ${series}`);
-        
-        if (!parsedData) {
-          throw new Error(`Failed to parse data from ${filename}`);
-        }
-
-        loadedData[series] = parsedData;
-        debugLog('Success', `Successfully loaded series ${series}`);
-
-      } catch (error) {
-        debugLog('Error', `Failed to process ${filename}: ${error.message}`, 'error');
-        console.error(`Detailed error for ${filename}:`, error);
-      }
-    }
-
-    if (Object.keys(loadedData).length === 0) {
-      throw new Error('Failed to load any series data. Please check the console for detailed errors.');
-    }
-
-    seriesData = loadedData;
-    debugLog('Complete', `Successfully loaded ${Object.keys(loadedData).length} series`);
-    initializeConfigurator();
-    
-  } catch (error) {
-    debugLog('Fatal Error', error.message, 'error');
-    document.getElementById('root').innerHTML = `
-      <div class="p-4 bg-red-100 border border-red-400 text-red-700 rounded">
-        <h3 class="font-bold mb-2">Error loading configurator data:</h3>
-        <p>${error.message}</p>
-        <p class="mt-2 text-sm">Files in directory:</p>
-        <pre class="mt-1 text-xs">${Object.values(SERIES_FILES).join('\n')}</pre>
-        <p class="mt-2 text-sm font-bold">Error Details:</p>
-        <pre class="mt-1 text-xs">${error.stack || error.toString()}</pre>
-      </div>
-    `;
-  }
-}
 function processGearSections(markdown) {
   const driveGearSets = {};
   const shaftStyles = [];
@@ -161,14 +173,14 @@ function processGearSections(markdown) {
           shaftStyles.push({ code, description: description.trim() });
         }
 
-        const shaftKeyMatch = section.match(/Shaft Key: ([\w-]+)/);
+        const shaftKeyMatch = section.match(/Shaft Key:\s*([\w-]+)/);
         if (shaftKeyMatch) {
           driveGearSets[code].shaftKey = shaftKeyMatch[1];
         }
 
         parseTableData(section).forEach(([gearCode, partNumber]) => {
           if (gearCode && partNumber && partNumber.toLowerCase() !== 'n/a') {
-            const gearMatch = gearCode.match(/^(\d+)-\d+$/);
+            const gearMatch = gearCode.match(/^(\d+)(?:-\d+)?$/);
             if (gearMatch) {
               const gearSize = gearMatch[1];
               driveGearSets[code][`${gearSize}-${code}`] = partNumber;
@@ -203,7 +215,6 @@ function parseMarkdownData(markdownText) {
     rotationOptions: [...DEFAULT_ROTATION_OPTIONS]
   };
 
-  // Process drive gear sections first
   const { driveGearSets, shaftStyles } = processGearSections(cleanedMarkdown);
   data.driveGearSets = driveGearSets;
   data.shaftStyles = shaftStyles;
@@ -232,40 +243,28 @@ function parseMarkdownData(markdownText) {
       .filter(item => item.code && item.partNumber);
   }
 
-  // Parse gear housings
-  const pumpGearContent = findSectionContent(cleanedMarkdown, 'Gear Housing - Pump') ||
-                         findSectionContent(cleanedMarkdown, 'Gear Housing');
-  if (pumpGearContent) {
-    data.gearHousings = parseTableData(pumpGearContent)
+  // Parse PEC covers and gear housings
+  const pecContent = findSectionContent(cleanedMarkdown, 'P\\.E\\.C Cover') || 
+                    findSectionContent(cleanedMarkdown, 'Port End Covers');
+  if (pecContent) {
+    data.pecCovers = parseTableData(pecContent)
+      .map(([description, partNumber]) => ({
+        description,
+        partNumber
+      }))
+      .filter(item => item.partNumber && item.description);
+  }
+
+  const gearContent = findSectionContent(cleanedMarkdown, 'Gear Housing') ||
+                     findSectionContent(cleanedMarkdown, 'Gear Housing - Pump');
+  if (gearContent) {
+    data.gearHousings = parseTableData(gearContent)
       .map(([code, partNumber, description]) => ({
         code,
         partNumber,
         description: description || 'Standard'
       }))
       .filter(item => item.code && item.partNumber);
-  }
-
-  const motorGearContent = findSectionContent(cleanedMarkdown, 'Gear Housing - Motor');
-  if (motorGearContent) {
-    data.motorGearHousings = parseTableData(motorGearContent)
-      .map(([code, partNumber, description]) => ({
-        code,
-        partNumber,
-        description: description || code
-      }))
-      .filter(item => item.code && item.partNumber);
-  }
-
-  // Parse PEC covers
-  const pumpPecContent = findSectionContent(cleanedMarkdown, 'P\\.E\\.C Cover') || 
-                        findSectionContent(cleanedMarkdown, 'Port End Covers');
-  if (pumpPecContent) {
-    data.pecCovers = parseTableData(pumpPecContent)
-      .map(([description, partNumber]) => ({
-        description,
-        partNumber
-      }))
-      .filter(item => item.partNumber && item.description);
   }
 
   // Parse remaining sections
@@ -325,7 +324,6 @@ function parseMarkdownData(markdownText) {
 
   return data;
 }
-
 function calculateTotalGearWidth(config, currentSeriesData) {
   if (!currentSeriesData?.gearHousings || !config.gearSize) return 0;
 
@@ -355,6 +353,7 @@ function calculateTotalGearWidth(config, currentSeriesData) {
 
   return totalWidth;
 }
+
 function determineBearingCarrierQty(pumpType) {
   const qtyMap = {
     'single': 0,
@@ -415,7 +414,7 @@ function generateModelCode(config) {
     
     return code;
   } catch (error) {
-    debugLog('Error', `Error generating model code: ${error.message}`, 'error');
+    console.error('Error generating model code:', error);
     return '';
   }
 }
@@ -558,28 +557,28 @@ function generateBOM(config) {
     }
 
   } catch (error) {
-    debugLog('Error', `Error generating BOM: ${error.message}`, 'error');
+    console.error('Error generating BOM:', error);
   }
 
   return bom;
 }
 
-// Add debugging function
-window.testFileRead = async (filename) => {
+// Update the test function to use fetch
+async function testFile(filename) {
   try {
-    console.log(`Testing file read for: ${filename}`);
-    const content = await window.fs.readFile(filename);
-    console.log('Success! Content preview:', content.toString().slice(0, 100));
+    const response = await fetch(filename);
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+    const content = await response.text();
+    console.log(`Successfully read ${filename}`);
+    console.log('Content preview:', content.substring(0, 100));
     return true;
   } catch (error) {
-    console.error(`Failed to read ${filename}:`, error);
+    console.error(`Error reading ${filename}:`, error);
     return false;
   }
-};
-
-// Initialize configurator
-function initializeConfigurator() {
-  ReactDOM.render(React.createElement(PumpConfigurator), document.getElementById('root'));
 }
 
+// Start loading on page load
 window.onload = loadSeriesData;
