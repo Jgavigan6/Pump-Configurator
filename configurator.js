@@ -26,6 +26,20 @@ const SERIES_FILES = {
   '365': '365.md'
 };
 
+// NEW: Add porting code constants
+const PORTING_TYPES = {
+  NPT: 'NPT',
+  SPLIT_FLANGE: 'Split Flange',
+  ODT: 'O.D.T.'
+};
+
+const PORTING_CODE_TYPES = {
+  PORT_END_COVER: 'PEC',
+  GEAR_HOUSING: 'GH',
+  BEARING_CARRIER: 'BC'
+};
+
+// Original code continues
 const DEFAULT_ROTATION_OPTIONS = [
   { code: '1', description: 'CW' },
   { code: '2', description: 'CCW' },
@@ -37,59 +51,117 @@ const DEFAULT_ROTATION_OPTIONS = [
   { code: '9', description: 'Birotational motor with 1-1/4" NPT case drain without bearing' }
 ];
 
-async function loadSeriesData() {
+// NEW: Add function to parse porting sections
+function parsePortingCodes(markdown) {
+  const portingData = {
+    portEndCover: [],
+    gearHousing: [],
+    bearingCarrier: []
+  };
+
   try {
-    console.log('Starting to load series data...');
-    const loadedData = {};
-    
-    for (const [series, filename] of Object.entries(SERIES_FILES)) {
-      try {
-        console.log(`Attempting to load ${filename} for series ${series}`);
-        
-        const response = await fetch(filename);
-        if (!response.ok) {
-          throw new Error(`HTTP error! status: ${response.status}`);
-        }
-        const content = await response.text();
-        
-        if (!content || !content.trim()) {
-          throw new Error(`Empty content for ${filename}`);
-        }
+    // Find porting codes section
+    const portingSection = markdown.match(/# .* Series Porting Codes[\s\S]*?(?=# |$)/);
+    if (!portingSection) return portingData;
 
-        const parsedData = parseMarkdownData(content);
-        console.log(`Successfully parsed data for series ${series}`);
-        loadedData[series] = parsedData;
-
-      } catch (error) {
-        console.error(`Failed to process ${filename}:`, error);
-      }
+    // Parse Port End Cover codes - specifically handle the 176 format
+    const pecSection = findSectionContent(portingSection[0], 'Port End Cover Codes');
+    if (pecSection) {
+      const lines = pecSection.split('\n');
+      let currentType = 'NPT';  // Default to NPT
+      
+      lines.forEach(line => {
+        if (line.includes('|') && !line.includes('---') && !line.includes('Code W/O ST')) {
+          const cells = line.split('|')
+            .map(cell => cell.trim())
+            .filter(cell => cell);
+          
+          if (cells.length >= 2) {
+            const code = cells[0];
+            if (code && code !== 'Code') {
+              portingData.portEndCover.push({
+                type: currentType,
+                code: code,
+                leftPort: cells[1] || '',
+                rightPort: cells[2] || ''
+              });
+            }
+          }
+        }
+      });
     }
 
-    if (Object.keys(loadedData).length === 0) {
-      throw new Error('No series data could be loaded');
+    // Parse Gear Housing codes
+    const ghSection = findSectionContent(portingSection[0], 'Gear Housing Codes');
+    if (ghSection) {
+      const lines = ghSection.split('\n');
+      let currentType = 'NPT';
+
+      lines.forEach(line => {
+        if (line.includes('|') && !line.includes('---') && !line.includes('Code')) {
+          const cells = line.split('|')
+            .map(cell => cell.trim())
+            .filter(cell => cell);
+          
+          if (cells.length >= 3) {
+            const code = cells[0];
+            if (code) {
+              portingData.gearHousing.push({
+                type: currentType,
+                code: code,
+                leftPort: cells[1] || '',
+                rightPort: cells[2] || ''
+              });
+            }
+          }
+        }
+      });
     }
-
-    seriesData = loadedData;
-    console.log(`Successfully loaded ${Object.keys(loadedData).length} series`);
-    initializeConfigurator();
-
   } catch (error) {
-    console.error('Error in loadSeriesData:', error);
-    document.getElementById('root').innerHTML = `
-      <div class="p-4 bg-red-100 border border-red-400 text-red-700 rounded">
-        <h3 class="font-bold mb-2">Error loading configurator data:</h3>
-        <p>Error: ${error.message}</p>
-        <p class="mt-2">Please ensure all files are accessible:</p>
-        <ul class="mt-1 text-sm list-disc list-inside">
-          ${Object.values(SERIES_FILES).map(f => `<li>${f}</li>`).join('\n')}
-        </ul>
-        <p class="mt-2 text-sm">Check console for detailed error messages.</p>
-      </div>
-    `;
+    console.error('Error parsing porting codes:', error);
   }
+
+  return portingData;
 }
 
-// Clean and standardize markdown content
+// NEW: Add function to parse porting tables
+function parsePortingTable(section) {
+  const portingEntries = [];
+  let currentType = '';
+  const lines = section.split('\n');
+
+  lines.forEach(line => {
+    if (line.includes('### NPT')) {
+      currentType = 'NPT';
+    } else if (line.includes('### Split Flange')) {
+      currentType = 'Split Flange';
+    } else if (line.includes('### O.D.T.')) {
+      currentType = 'O.D.T.';
+    } else if (line.includes('|') && !line.includes('---') && !line.includes('Code W/O ST')) {
+      const cells = line.split('|')
+        .map(cell => cell.trim())
+        .filter(cell => cell);
+      
+      if (cells.length >= 2) {
+        // Handle both single unit and multi-unit formats
+        if (cells[0] && cells[0] !== 'Code') {
+          portingEntries.push({
+            type: currentType,
+            code: cells[0],
+            leftPort: cells[1] || '',
+            rightPort: cells[2] || '',
+            info: cells.slice(3).join(' ')
+          });
+        }
+      }
+    }
+  });
+
+  return portingEntries;
+}
+
+
+// Original code continues
 function cleanMarkdownContent(content) {
   if (!content) return '';
   return content.toString()
@@ -99,14 +171,13 @@ function cleanMarkdownContent(content) {
     .trim();
 }
 
-// Extract section content by heading
 function findSectionContent(text, sectionName) {
   if (!text || !sectionName) return '';
   const pattern = new RegExp(`##\\s*${sectionName}[\\s\\S]*?(?=\\n##\\s|$)`, 'i');
   const match = text.match(pattern);
   return match ? match[0].trim() : '';
 }
-// Parse table data from markdown section
+
 function parseTableData(section) {
   if (!section) return [];
 
@@ -131,14 +202,15 @@ function parseTableData(section) {
   }
 }
 
-// Find drive gear sections
 function findDriveGearSections(content) {
   if (!content) return [];
   const mainPattern = /### Code \d+[^#]*?(?=###|$)/gs;
   return (content.match(mainPattern) || []).map(section => section.trim());
 }
 
-// Process gear sections from markdown
+// [Continues in Part 2...]
+// [Continued from Part 1...]
+
 function processGearSections(markdown) {
   const driveGearSets = {};
   const shaftStyles = [];
@@ -180,7 +252,6 @@ function processGearSections(markdown) {
   return { driveGearSets, shaftStyles };
 }
 
-// Parse bearing carriers section
 function parseBearingCarriers(section) {
   if (!section) return [];
   const tableData = parseTableData(section);
@@ -191,7 +262,83 @@ function parseBearingCarriers(section) {
   })).filter(item => item.partNumber);
 }
 
-// Parse all markdown data into structured format
+function validatePortingCode(code, series, config) {
+  if (!code || !series) return { isValid: false, error: 'Missing code or series' };
+  
+  const currentSeriesData = seriesData[series];
+  if (!currentSeriesData?.portingData) return { isValid: false, error: 'Series porting data not found' };
+  
+  code = code.toUpperCase();
+  const firstCode = code.substring(0, 2);
+  const secondCode = code.substring(2, 4);
+
+  // For single units
+  if (config.pumpType === 'single') {
+    // Check Port End Cover code (first two letters)
+    const validPortEndCover = currentSeriesData.portingData.portEndCover.some(entry => 
+      entry.code.toUpperCase() === firstCode ||
+      entry.code.toUpperCase().replace('Z', 'F') === firstCode ||  // Handle F/Z equivalence
+      entry.code.toUpperCase().replace('F', 'Z') === firstCode
+    );
+    if (!validPortEndCover) {
+      return { isValid: false, error: 'Invalid Port End Cover code' };
+    }
+
+    // Check Gear Housing code (last two letters)
+    const validGearHousing = currentSeriesData.portingData.gearHousing.some(entry => 
+      entry.code.toUpperCase() === secondCode
+    );
+    if (!validGearHousing) {
+      return { isValid: false, error: 'Invalid Gear Housing code' };
+    }
+
+    return {
+      isValid: true,
+      data: {
+        type: 'NPT',
+        portEndCover: {
+          code: firstCode,
+          type: 'Port End Cover'
+        },
+        gearHousing: {
+          code: secondCode,
+          type: 'Gear Housing'
+        }
+      }
+    };
+  }
+    else {
+    // For multi-section units
+    const validBearingCarrier = seriesPortingData.bearingCarrier.some(entry => 
+      entry.code.toUpperCase() === firstCode
+    );
+    if (!validBearingCarrier) {
+      return { isValid: false, error: 'Invalid Bearing Carrier code' };
+    }
+
+    const validGearHousing = seriesPortingData.gearHousing.some(entry => 
+      entry.code.toUpperCase() === secondCode
+    );
+    if (!validGearHousing) {
+      return { isValid: false, error: 'Invalid Gear Housing code' };
+    }
+
+    return {
+      isValid: true,
+      data: {
+        type: 'NPT',
+        bearingCarrier: {
+          code: firstCode,
+          type: 'Bearing Carrier'
+        },
+        gearHousing: {
+          code: secondCode,
+          type: 'Gear Housing'
+        }
+      }
+    };
+  }
+}
 function parseMarkdownData(markdownText) {
   const cleanedMarkdown = cleanMarkdownContent(markdownText);
   
@@ -210,7 +357,9 @@ function parseMarkdownData(markdownText) {
     fastenersTripleQuad: [],
     shaftStyles: [],
     motorFastenersSingle: [],
-    rotationOptions: [...DEFAULT_ROTATION_OPTIONS]
+    rotationOptions: [...DEFAULT_ROTATION_OPTIONS],
+    // NEW: Add porting data structure
+    portingData: {}
   };
 
   // Process shaft end covers
@@ -237,6 +386,9 @@ function parseMarkdownData(markdownText) {
       }))
       .filter(item => item.code && item.partNumber);
   }
+
+  // [Continues in Part 3...]
+  // [Continued from Part 2...]
 
   // Process PEC covers
   const pecContent = findSectionContent(cleanedMarkdown, 'P\\.E\\.C Cover') || 
@@ -308,7 +460,7 @@ function parseMarkdownData(markdownText) {
 
   return data;
 }
-// Calculate total gear width
+
 function calculateTotalGearWidth(config, currentSeriesData) {
   if (!currentSeriesData?.gearHousings || !config.gearSize) return 0;
 
@@ -387,6 +539,10 @@ function determineFastenerPartNumber(config, currentSeriesData, totalGearWidth) 
   })?.partNumber;
 }
 
+// [Continues in Part 4...]
+// [Continued from Part 3...]
+
+// Modified to include porting codes in model code generation
 function generateModelCode(config) {
   if (!config.type || !config.series || !config.rotation || 
       !config.secCode || !config.gearSize || !config.shaftStyle) {
@@ -395,13 +551,17 @@ function generateModelCode(config) {
 
   try {
     let code = `${config.type}${config.series}A${config.rotation}${config.secCode}`;
-    code += config.portingCodes[0] || 'XXXX';
+    
+    // Add primary porting code or placeholder
+    code += config.portingCodes[0]?.toUpperCase() || 'XXXX';
     code += `${config.gearSize}-${config.shaftStyle}`;
     
+    // Add additional sections with their porting codes
     if (config.pumpType !== 'single' && config.additionalGearSizes?.length > 0) {
       config.additionalGearSizes.forEach((size, index) => {
         if (size) {
-          code += (config.additionalPortingCodes[index] || 'XXXX');
+          // Add section's porting code or placeholder
+          code += config.additionalPortingCodes[index]?.toUpperCase() || 'XXXX';
           code += `${size}-${index + 1}`;
         }
       });
@@ -414,9 +574,12 @@ function generateModelCode(config) {
   }
 }
 
+// Modified to include porting information in BOM
 function generateBOM(config) {
+  if (!config || !config.series || !config.type) return [];
+  
   const currentSeriesData = seriesData[config.series];
-  if (!currentSeriesData || !config.type) return [];
+  if (!currentSeriesData) return [];
 
   const bom = [];
   const is200Series = ['230', '250', '265'].includes(config.series);
@@ -466,6 +629,7 @@ function generateBOM(config) {
         if (housing) {
           addToBOM(housing.partNumber, 1,
             `Gear Housing ${index === 0 ? '(Primary)' : `(Section ${index + 2})`} - ${housing.description}`);
+          
         }
       });
     }
@@ -490,6 +654,9 @@ function generateBOM(config) {
         }
       }
     }
+
+    // [Continues in Part 5...]
+   // [Continued from Part 4...]
 
     // Add idler gear sets for multi-section units
     if (config.pumpType !== 'single' && config.additionalGearSizes) {
@@ -523,6 +690,19 @@ function generateBOM(config) {
           if (bearingCarrier) {
             addToBOM(bearingCarrier.partNumber, 1,
               `Bearing Carrier (Section ${index + 2}) - ${bearingCarrier.description}`);
+            
+            // Add bearing carrier porting information if available
+            if (config.additionalPortingCodes[index]) {
+              const portingValidation = validatePortingCode(
+                config.additionalPortingCodes[index],
+                config.series,
+                PORTING_CODE_TYPES.BEARING_CARRIER
+              );
+              if (portingValidation.isValid) {
+                addToBOM('PORTING-INFO', 1,
+                  `Bearing Carrier Section ${index + 2} Ports - ${formatPortingInfo(portingValidation.data)}`);
+              }
+            }
           }
         }
       });
@@ -561,8 +741,10 @@ function generateBOM(config) {
 
   return bom;
 }
+
 // Main React Component
 const PumpConfigurator = () => {
+  // Modified initial state to include porting codes
   const initialState = {
     series: '',
     type: '',
@@ -572,15 +754,20 @@ const PumpConfigurator = () => {
     gearSize: '',
     shaftStyle: '',
     pecSelection: '',
-    bearingCarrierSelections: [], // Array for multiple bearing carriers
-    portingCodes: [''],
+    bearingCarrierSelections: [],
+    portingCodes: [''],  // Primary section porting code
     additionalGearSizes: [],
-    additionalPortingCodes: []
+    additionalPortingCodes: [], // Additional section porting codes
   };
 
   const [config, setConfig] = React.useState(initialState);
   const [bom, setBom] = React.useState([]);
   const [error, setError] = React.useState(null);
+  const [portingErrors, setPortingErrors] = React.useState({});
+  const [portingInfo, setPortingInfo] = React.useState({});
+
+  // [Continues in Part 6...]
+   // [Continued from Part 5...]
 
   // Update BOM when configuration changes
   React.useEffect(() => {
@@ -598,6 +785,143 @@ const PumpConfigurator = () => {
     }
   }, [config]);
 
+  // Add porting code field creator
+  const createPortingCodeField = (index = 0, isAdditionalSection = false) => {
+    const fieldId = `porting-code-${isAdditionalSection ? `section-${index + 2}` : 'primary'}`;
+    const currentCode = isAdditionalSection ? 
+      config.additionalPortingCodes[index] : 
+      config.portingCodes[0];
+    const currentError = portingErrors[fieldId];
+    const currentInfo = portingInfo[fieldId];
+  
+    return React.createElement('div', { className: 'mb-4' },
+      React.createElement('label', {
+        htmlFor: fieldId,
+        className: 'block text-sm font-medium mb-2 text-gray-700'
+      }, `Porting Code${isAdditionalSection ? ` - Section ${index + 2}` : ''}`),
+      React.createElement('input', {
+        id: fieldId,
+        type: 'text',
+        maxLength: 4,
+        className: `w-full p-2 border rounded ${currentError ? 'border-red-500' : 'border-gray-300'} focus:ring-blue-500 focus:border-blue-500 uppercase`,
+        value: currentCode || '',
+        onChange: (e) => handlePortingCodeChange(e.target.value, index, isAdditionalSection),
+        placeholder: 'Enter porting code'
+      }),
+      currentError && React.createElement('p', {
+        className: 'mt-1 text-sm text-red-500'
+      }, currentError),
+      currentInfo && React.createElement('div', {
+        className: 'mt-2 p-2 bg-gray-50 rounded text-sm'
+      }, [
+        React.createElement('p', { key: 'type' }, `Type: ${currentInfo.type}`),
+        React.createElement('p', { key: 'leftPort' }, `Left Port: ${currentInfo.leftPort}`),
+        React.createElement('p', { key: 'rightPort' }, `Right Port: ${currentInfo.rightPort}`),
+        currentInfo.info && React.createElement('p', { key: 'info' }, `Additional Info: ${currentInfo.info}`)
+      ])
+    );
+  };
+
+  // Add porting code change handler
+  const handlePortingCodeChange = (value, index = 0, isAdditionalSection = false) => {
+    const code = value.toUpperCase();
+    const fieldId = `porting-code-${isAdditionalSection ? `section-${index + 2}` : 'primary'}`;
+    
+    const newConfig = { ...config };
+    const newErrors = { ...portingErrors };
+    const newInfo = { ...portingInfo };
+  
+    // Update the code in config first
+    if (isAdditionalSection) {
+      const newCodes = [...(newConfig.additionalPortingCodes || [])];
+      newCodes[index] = code;
+      newConfig.additionalPortingCodes = newCodes;
+    } else {
+      newConfig.portingCodes = [code];
+    }
+  
+    // Only validate if we have enough characters
+    if (code && code.length === 4) {
+      try {
+        const validation = validatePortingCode(code, config.series, config);
+        if (validation.isValid) {
+          newErrors[fieldId] = null;
+          newInfo[fieldId] = validation.data;
+        } else {
+          newErrors[fieldId] = validation.error;
+          newInfo[fieldId] = null;
+        }
+      } catch (error) {
+        console.error('Validation error:', error);
+        newErrors[fieldId] = 'Error validating porting code';
+        newInfo[fieldId] = null;
+      }
+    } else {
+      // Clear errors while typing
+      newErrors[fieldId] = null;
+      newInfo[fieldId] = null;
+    }
+  
+    setConfig(newConfig);
+    setPortingErrors(newErrors);
+    setPortingInfo(newInfo);
+  };
+
+  // Your existing handler functions remain unchanged
+  const handleSeriesChange = (value) => {
+    console.log('Series changed to:', value);
+    setConfig({
+      ...initialState,
+      series: value
+    });
+    setError(null);
+    setPortingErrors({});
+    setPortingInfo({});
+  };
+
+  // [Continues in Part 7...]
+  // [Continued from Part 6...]
+
+  const handleTypeChange = (value) => {
+    console.log('Type changed to:', value);
+    setConfig({
+      ...config,
+      type: value,
+      secCode: '',
+      gearSize: '',
+      shaftStyle: '',
+      pecSelection: '',
+      bearingCarrierSelections: [],
+      portingCodes: [''],
+      additionalPortingCodes: []
+    });
+    setPortingErrors({});
+    setPortingInfo({});
+  };
+
+  const handlePumpTypeChange = (value) => {
+    const newConfig = { ...config, pumpType: value };
+    if (value === 'single') {
+      newConfig.additionalGearSizes = [];
+      newConfig.additionalPortingCodes = [];
+      newConfig.bearingCarrierSelections = [];
+    } else {
+      const count = value === 'tandem' ? 1 : value === 'triple' ? 2 : 3;
+      newConfig.additionalGearSizes = Array(count).fill('');
+      newConfig.additionalPortingCodes = Array(count).fill('');
+      newConfig.bearingCarrierSelections = Array(count).fill('');
+    }
+    setConfig(newConfig);
+    setPortingErrors({});
+    setPortingInfo({});
+  };
+
+  const handleBearingCarrierChange = (value, index) => {
+    const newSelections = [...config.bearingCarrierSelections];
+    newSelections[index] = value;
+    setConfig({ ...config, bearingCarrierSelections: newSelections });
+  };
+
   // Get available components
   const getAvailableComponents = (seriesData, type) => {
     if (!seriesData) return {};
@@ -614,14 +938,14 @@ const PumpConfigurator = () => {
     };
   };
 
-  // Create empty option
+  // Create empty option (unchanged)
   const createEmptyOption = () => React.createElement(
     'option',
     { value: '', key: 'empty' },
     '-- Select --'
   );
 
-  // Create select field
+  // Create select field (unchanged)
   const createSelectField = (label, value, options, onChange, isPecSelect = false) => {
     if (!Array.isArray(options)) {
       console.warn(`No options provided for ${label}`);
@@ -666,55 +990,11 @@ const PumpConfigurator = () => {
     );
   };
 
-  // Handle series change
-  const handleSeriesChange = (value) => {
-    console.log('Series changed to:', value);
-    setConfig({
-      ...initialState,
-      series: value
-    });
-    setError(null);
-  };
-
-  // Handle type change
-  const handleTypeChange = (value) => {
-    console.log('Type changed to:', value);
-    setConfig({
-      ...config,
-      type: value,
-      secCode: '',
-      gearSize: '',
-      shaftStyle: '',
-      pecSelection: '',
-      bearingCarrierSelections: []
-    });
-  };
-
-  // Handle pump type change
-  const handlePumpTypeChange = (value) => {
-    const newConfig = { ...config, pumpType: value };
-    if (value === 'single') {
-      newConfig.additionalGearSizes = [];
-      newConfig.additionalPortingCodes = [];
-      newConfig.bearingCarrierSelections = [];
-    } else {
-      const count = value === 'tandem' ? 1 : value === 'triple' ? 2 : 3;
-      newConfig.additionalGearSizes = Array(count).fill('');
-      newConfig.additionalPortingCodes = Array(count).fill('');
-      newConfig.bearingCarrierSelections = Array(count).fill('');
-    }
-    setConfig(newConfig);
-  };
-
-  // Handle bearing carrier selection
-  const handleBearingCarrierChange = (value, index) => {
-    const newSelections = [...config.bearingCarrierSelections];
-    newSelections[index] = value;
-    setConfig({ ...config, bearingCarrierSelections: newSelections });
-  };
-
   const currentSeriesData = seriesData[config.series];
   const components = currentSeriesData ? getAvailableComponents(currentSeriesData, config.type) : {};
+
+  // [Continues in Part 8 with the main render implementation...]
+  // [Continued from Part 7...]
 
   // Main render
   return React.createElement('div', { className: 'bg-white shadow rounded-lg max-w-4xl mx-auto p-4' },
@@ -775,20 +1055,27 @@ const PumpConfigurator = () => {
           ),
 
           // Shaft End Cover
-          components.shaftEndCovers?.length > 0 && createSelectField(
-            'Shaft End Cover',
-            config.secCode,
-            components.shaftEndCovers,
-            (value) => setConfig({ ...config, secCode: value })
-          ),
+// Shaft End Cover
+components.shaftEndCovers?.length > 0 && createSelectField(
+  'Shaft End Cover',
+  config.secCode,
+  components.shaftEndCovers,
+  (value) => setConfig({ ...config, secCode: value })
+),
 
-          // Gear Size
-          components.gearHousings?.length > 0 && createSelectField(
-            'Gear Size',
-            config.gearSize,
-            components.gearHousings,
-            (value) => setConfig({ ...config, gearSize: value })
-          ),
+// Porting Code - Always show
+createPortingCodeField(),
+
+// Gear Size 
+components.gearHousings?.length > 0 && createSelectField(
+  'Gear Size',
+  config.gearSize,
+  components.gearHousings,
+  (value) => setConfig({ ...config, gearSize: value })
+),
+
+          // Add primary porting code field after gear size
+         
 
           // Shaft Style
           components.shaftStyles?.length > 0 && createSelectField(
@@ -826,7 +1113,9 @@ const PumpConfigurator = () => {
                   setConfig({ ...config, additionalGearSizes: newSizes });
                 }
               ),
-              // Add bearing carrier selection for each additional section
+              // Add porting code field for this section
+              size && createPortingCodeField(index, true),
+              // Add bearing carrier selection
               components.bearingCarriers?.length > 0 && createSelectField(
                 `Bearing Carrier - Section ${index + 2}`,
                 config.bearingCarrierSelections[index] || '',
@@ -846,6 +1135,9 @@ const PumpConfigurator = () => {
               generateModelCode(config)
             )
           ),
+
+          // [Continues in Part 9 with BOM table and initialization code...]
+          // [Continued from Part 8...]
 
           // BOM Table
           bom.length > 0 && React.createElement('div', { className: 'mt-8' },
@@ -900,6 +1192,62 @@ const PumpConfigurator = () => {
     )
   );
 };
+
+// Modified loadSeriesData to include porting data processing
+async function loadSeriesData() {
+  try {
+    console.log('Starting to load series data...');
+    const loadedData = {};
+    
+    for (const [series, filename] of Object.entries(SERIES_FILES)) {
+      try {
+        console.log(`Attempting to load ${filename} for series ${series}`);
+        
+        const response = await fetch(filename);
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        const content = await response.text();
+        
+        if (!content || !content.trim()) {
+          throw new Error(`Empty content for ${filename}`);
+        }
+
+        const parsedData = parseMarkdownData(content);
+        // Add porting data to the parsed data
+        parsedData.portingData = parsePortingCodes(content);
+        
+        console.log(`Successfully parsed data for series ${series}`);
+        loadedData[series] = parsedData;
+
+      } catch (error) {
+        console.error(`Failed to process ${filename}:`, error);
+      }
+    }
+
+    if (Object.keys(loadedData).length === 0) {
+      throw new Error('No series data could be loaded');
+    }
+
+    seriesData = loadedData;
+    console.log(`Successfully loaded ${Object.keys(loadedData).length} series`);
+    initializeConfigurator();
+
+  } catch (error) {
+    console.error('Error in loadSeriesData:', error);
+    document.getElementById('root').innerHTML = `
+      <div class="p-4 bg-red-100 border border-red-400 text-red-700 rounded">
+        <h3 class="font-bold mb-2">Error loading configurator data:</h3>
+        <p>Error: ${error.message}</p>
+        <p class="mt-2">Please ensure all files are accessible:</p>
+        <ul class="mt-1 text-sm list-disc list-inside">
+          ${Object.values(SERIES_FILES).map(f => `<li>${f}</li>`).join('\n')}
+        </ul>
+        <p class="mt-2 text-sm">Check console for detailed error messages.</p>
+      </div>
+    `;
+  }
+}
 
 // Initialize configurator
 function initializeConfigurator() {
