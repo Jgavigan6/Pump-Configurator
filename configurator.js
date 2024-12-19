@@ -7,6 +7,21 @@ function debugLog(context, data, type = 'info') {
   if (!DEBUG) return;
   console[type === 'error' ? 'error' : type === 'warn' ? 'warn' : 'log'](`[${context}]:`, data);
 }
+function debugPortingData(code, series, currentSeriesData, validationResult) {
+  console.group('Porting Code Debug');
+  console.log('Analyzing code:', code);
+  console.log('Series:', series);
+
+  if (!currentSeriesData) {
+      console.error('No data found for the selected series:', series);
+  } else {
+      console.log('Available Port End Cover Codes:', currentSeriesData?.portingData?.portEndCover || []);
+      console.log('Available Gear Housing Codes:', currentSeriesData?.portingData?.gearHousing || []);
+  }
+
+  console.log('Validation Result:', validationResult);
+  console.groupEnd();
+}
 
 const SERIES_FILES = {
   '20': '20.md',
@@ -25,6 +40,45 @@ const SERIES_FILES = {
   '350': '350.md',
   '365': '365.md'
 };
+const PortingCodeDisplay = ({ portingCode, seriesData }) => {
+  // Debugging logs
+  console.log('seriesData:', seriesData);
+  console.log('portingCode:', portingCode);
+
+  // Handle validation dynamically based on input length
+  const firstPart = portingCode.substring(0, 2).toUpperCase();
+  const secondPart = portingCode.length === 4 ? portingCode.substring(2, 4).toUpperCase() : null;
+
+  // Render different states based on input length
+  if (!portingCode || portingCode.length < 2) {
+      return React.createElement('div', null, 'Enter at least 2 characters to begin parsing');
+  }
+
+  if (portingCode.length > 4) {
+      return React.createElement('div', { className: 'text-red-500' }, 'Invalid code format: Maximum 4 characters allowed.');
+  }
+
+  // Safeguard for undefined seriesData or its properties
+  const portEndCover = seriesData?.portEndCover?.find(entry => entry.code === firstPart);
+  const gearHousing = secondPart ? seriesData?.gearHousing?.find(entry => entry.code === secondPart) : null;
+
+  return React.createElement('div', { className: 'mt-2 p-3 bg-gray-50 rounded-md' },
+      React.createElement('div', { className: 'text-sm' },
+          React.createElement('div', { className: 'font-medium mb-1' }, 'Porting Details:'),
+          portEndCover
+              ? React.createElement('div', null, `Port End Cover: Left - ${portEndCover.leftPort}, Right - ${portEndCover.rightPort}`)
+              : React.createElement('div', { className: 'text-red-500' }, 'Invalid Port End Cover code'),
+          secondPart
+              ? (
+                  gearHousing
+                      ? React.createElement('div', null, `Gear Housing: Left - ${gearHousing.leftPort}, Right - ${gearHousing.rightPort}`)
+                      : React.createElement('div', { className: 'text-red-500' }, 'Invalid Gear Housing code')
+              )
+              : React.createElement('div', { className: 'text-gray-500' }, 'Gear Housing part not provided')
+      )
+  );
+};
+
 
 // NEW: Add porting code constants
 const PORTING_TYPES = {
@@ -52,7 +106,8 @@ const DEFAULT_ROTATION_OPTIONS = [
 ];
 
 // NEW: Add function to parse porting sections
-function parsePortingCodes(markdown) {
+function parsePortingData(markdownText) {
+  console.group('Parsing Porting Data');
   const portingData = {
     portEndCover: [],
     gearHousing: [],
@@ -60,70 +115,152 @@ function parsePortingCodes(markdown) {
   };
 
   try {
-    // Find porting codes section
-    const portingSection = markdown.match(/# .* Series Porting Codes[\s\S]*?(?=# |$)/);
-    if (!portingSection) return portingData;
+    // Find all porting sections
+    const portingSection = markdownText.match(/# .*Porting Codes[\s\S]*?(?=# |$)/i);
+    if (!portingSection) {
+      console.log('No porting section found');
+      return portingData;
+    }
 
-    // Parse Port End Cover codes - specifically handle the 176 format
-    const pecSection = findSectionContent(portingSection[0], 'Port End Cover Codes');
+    const sectionContent = portingSection[0];
+    console.log('Found porting section:', sectionContent.substring(0, 100) + '...');
+
+    // Parse Port End Cover codes section
+    const pecSection = sectionContent.match(/## Port End Cover Codes[\s\S]*?(?=## |$)/i);
     if (pecSection) {
-      const lines = pecSection.split('\n');
-      let currentType = 'NPT';  // Default to NPT
+      console.log('Processing Port End Cover section');
       
-      lines.forEach(line => {
-        if (line.includes('|') && !line.includes('---') && !line.includes('Code W/O ST')) {
-          const cells = line.split('|')
+      // Find all porting type tables (NPT, O.D.T, Split Flange)
+      const portingTables = pecSection[0].match(/### .*?(?=###|$)/gs);
+      
+      portingTables?.forEach(table => {
+        const portingType = table.includes('NPT') ? 'NPT' : 
+                          table.includes('O.D.T') ? 'O.D.T' : 
+                          table.includes('Split Flange') ? 'Split Flange' : 'Unknown';
+        
+        console.log(`Processing ${portingType} table`);
+
+        // Split into rows and filter header/separator rows
+        const rows = table.split('\n')
+          .filter(line => line.includes('|'))
+          .filter(line => !line.includes('---'))
+          .filter(line => !/^\s*Code|^\s*-+/.test(line))
+          .filter(Boolean);
+
+        rows.forEach(row => {
+          const cells = row.split('|')
             .map(cell => cell.trim())
-            .filter(cell => cell);
-          
+            .filter(Boolean);
+
           if (cells.length >= 2) {
+            // Handle both formats: with and without W/ST columns
             const code = cells[0];
+            const leftPort = cells[2] || 'none';
+            const rightPort = cells[3] || 'none';
+
             if (code && code !== 'Code') {
               portingData.portEndCover.push({
-                type: currentType,
-                code: code,
-                leftPort: cells[1] || '',
-                rightPort: cells[2] || ''
+                code,
+                leftPort,
+                rightPort,
+                type: portingType
               });
+
+              // If there's a W/ST code, add it too
+              if (cells[1] && cells[1] !== 'Code W/ST') {
+                portingData.portEndCover.push({
+                  code: cells[1],
+                  leftPort,
+                  rightPort,
+                  type: portingType
+                });
+              }
             }
           }
-        }
+        });
       });
     }
 
-    // Parse Gear Housing codes
-    const ghSection = findSectionContent(portingSection[0], 'Gear Housing Codes');
+    // Parse Gear Housing codes section
+    const ghSection = sectionContent.match(/## Gear Housing Codes[\s\S]*?(?=## |$)/i);
     if (ghSection) {
-      const lines = ghSection.split('\n');
-      let currentType = 'NPT';
+      console.log('Processing Gear Housing section');
+      
+      // Similar process for gear housing tables
+      const portingTables = ghSection[0].match(/### .*?(?=###|$)/gs);
+      
+      portingTables?.forEach(table => {
+        const portingType = table.includes('NPT') ? 'NPT' : 
+                          table.includes('O.D.T') ? 'O.D.T' : 
+                          table.includes('Split Flange') ? 'Split Flange' : 'Unknown';
 
-      lines.forEach(line => {
-        if (line.includes('|') && !line.includes('---') && !line.includes('Code')) {
-          const cells = line.split('|')
+        const rows = table.split('\n')
+          .filter(line => line.includes('|'))
+          .filter(line => !line.includes('---'))
+          .filter(line => !/^\s*Code|^\s*-+/.test(line))
+          .filter(Boolean);
+
+        rows.forEach(row => {
+          const cells = row.split('|')
             .map(cell => cell.trim())
-            .filter(cell => cell);
-          
+            .filter(Boolean);
+
           if (cells.length >= 3) {
             const code = cells[0];
-            if (code) {
+            if (code && code !== 'Code') {
               portingData.gearHousing.push({
-                type: currentType,
-                code: code,
-                leftPort: cells[1] || '',
-                rightPort: cells[2] || ''
+                code,
+                leftPort: cells[1],
+                rightPort: cells[2],
+                type: portingType,
+                sizes: cells.slice(3).map(cell => cell === 'X')
               });
             }
           }
-        }
+        });
       });
     }
+
+    console.log('Parsed Port End Cover codes:', portingData.portEndCover);
+    console.log('Parsed Gear Housing codes:', portingData.gearHousing);
+
   } catch (error) {
-    console.error('Error parsing porting codes:', error);
+    console.error('Error parsing porting data:', error);
   }
 
+  console.groupEnd();
   return portingData;
 }
 
+function debugMarkdownContent(markdownText, context) {
+  console.group(`Debug Markdown Content: ${context}`);
+  
+  // Log first occurrence of porting codes section
+  const portingSection = markdownText.match(/# .*Porting Codes[\s\S]*?(?=# |$)/i);
+  if (portingSection) {
+    console.log('Found porting section. First 500 chars:', portingSection[0].substring(0, 500));
+    
+    // Log NPT section
+    const nptSection = portingSection[0].match(/### NPT Porting[\s\S]*?(?=###|$)/i);
+    if (nptSection) {
+      console.log('Found NPT section. First 200 chars:', nptSection[0].substring(0, 200));
+    } else {
+      console.log('No NPT section found');
+    }
+    
+    // Log table structure
+    const tables = portingSection[0].match(/\|.*\|/g);
+    if (tables) {
+      console.log('Found tables. First 3 rows:', tables.slice(0, 3));
+    } else {
+      console.log('No tables found');
+    }
+  } else {
+    console.log('No porting section found');
+  }
+  
+  console.groupEnd();
+}
 // NEW: Add function to parse porting tables
 function parsePortingTable(section) {
   const portingEntries = [];
@@ -262,83 +399,99 @@ function parseBearingCarriers(section) {
   })).filter(item => item.partNumber);
 }
 
+// Improved validation function for porting codes
 function validatePortingCode(code, series, config) {
-  if (!code || !series) return { isValid: false, error: 'Missing code or series' };
-  
+  console.group('Validating Porting Code');
+  console.log('Input:', { code, series, config });
+
+  if (!code || !series) {
+    console.log('Invalid input: missing code or series');
+    console.groupEnd();
+    return { isValid: false, error: 'Invalid code format' };
+  }
+
   const currentSeriesData = seriesData[series];
-  if (!currentSeriesData?.portingData) return { isValid: false, error: 'Series porting data not found' };
-  
-  code = code.toUpperCase();
-  const firstCode = code.substring(0, 2);
-  const secondCode = code.substring(2, 4);
+  if (!currentSeriesData?.portingData) {
+    console.log('No porting data found for series:', series);
+    console.groupEnd();
+    return { isValid: false, error: 'Series data not found' };
+  }
 
-  // For single units
-  if (config.pumpType === 'single') {
-    // Check Port End Cover code (first two letters)
-    const validPortEndCover = currentSeriesData.portingData.portEndCover.some(entry => 
-      entry.code.toUpperCase() === firstCode ||
-      entry.code.toUpperCase().replace('Z', 'F') === firstCode ||  // Handle F/Z equivalence
-      entry.code.toUpperCase().replace('F', 'Z') === firstCode
-    );
-    if (!validPortEndCover) {
-      return { isValid: false, error: 'Invalid Port End Cover code' };
-    }
+  // Split code into parts
+  let firstPart, secondPart;
+  if (code.length === 3) {
+    firstPart = code.substring(0, 1).toUpperCase();
+    secondPart = code.substring(1).toUpperCase();
+  } else if (code.length === 4) {
+    firstPart = code.substring(0, 2).toUpperCase();
+    secondPart = code.substring(2).toUpperCase();
+  } else {
+    console.log('Invalid code length:', code.length);
+    console.groupEnd();
+    return { isValid: false, error: 'Invalid code length' };
+  }
 
-    // Check Gear Housing code (last two letters)
-    const validGearHousing = currentSeriesData.portingData.gearHousing.some(entry => 
-      entry.code.toUpperCase() === secondCode
-    );
-    if (!validGearHousing) {
-      return { isValid: false, error: 'Invalid Gear Housing code' };
-    }
+  console.log('Code parts:', { firstPart, secondPart });
+  console.log('Available PEC codes:', currentSeriesData.portingData.portEndCover.map(p => p.code));
+  console.log('Available GH codes:', currentSeriesData.portingData.gearHousing.map(p => p.code));
 
-    return {
+  // Check first part (Port End Cover)
+  const isValidFirstPart = currentSeriesData.portingData.portEndCover.some(entry => {
+    const variants = [
+      entry.code,
+      entry.code.replace('F', 'Z'),
+      entry.code.replace('Z', 'F')
+    ];
+    return variants.includes(firstPart);
+  });
+
+  // Check second part (Gear Housing)
+  const isValidSecondPart = currentSeriesData.portingData.gearHousing.some(entry => 
+    entry.code === secondPart
+  );
+
+  console.log('Validation results:', { isValidFirstPart, isValidSecondPart });
+
+  if (isValidFirstPart && isValidSecondPart) {
+    const result = {
       isValid: true,
       data: {
         type: 'NPT',
-        portEndCover: {
-          code: firstCode,
-          type: 'Port End Cover'
+        firstPart: {
+          type: 'Port End Cover',
+          code: firstPart,
+          ...currentSeriesData.portingData.portEndCover.find(p => 
+            p.code === firstPart || 
+            p.code.replace('F', 'Z') === firstPart || 
+            p.code.replace('Z', 'F') === firstPart
+          )
         },
-        gearHousing: {
-          code: secondCode,
-          type: 'Gear Housing'
+        secondPart: {
+          type: 'Gear Housing',
+          code: secondPart,
+          ...currentSeriesData.portingData.gearHousing.find(p => p.code === secondPart)
         }
       }
     };
+    console.log('Valid code, returning:', result);
+    console.groupEnd();
+    return result;
   }
-    else {
-    // For multi-section units
-    const validBearingCarrier = seriesPortingData.bearingCarrier.some(entry => 
-      entry.code.toUpperCase() === firstCode
-    );
-    if (!validBearingCarrier) {
-      return { isValid: false, error: 'Invalid Bearing Carrier code' };
-    }
 
-    const validGearHousing = seriesPortingData.gearHousing.some(entry => 
-      entry.code.toUpperCase() === secondCode
-    );
-    if (!validGearHousing) {
-      return { isValid: false, error: 'Invalid Gear Housing code' };
-    }
-
-    return {
-      isValid: true,
-      data: {
-        type: 'NPT',
-        bearingCarrier: {
-          code: firstCode,
-          type: 'Bearing Carrier'
-        },
-        gearHousing: {
-          code: secondCode,
-          type: 'Gear Housing'
-        }
-      }
-    };
-  }
+  const error = !isValidFirstPart ? 'Invalid Port End Cover code' : 'Invalid Gear Housing code';
+  console.log('Invalid code:', error);
+  console.groupEnd();
+  return { isValid: false, error };
 }
+
+// Example usage of the parser and validation function
+const markdownText = `...`; // Add the restructured P176 markdown content here
+const portingData = parsePortingData(markdownText);
+console.log('Parsed Porting Data:', portingData);
+
+// Test validation
+const config = { seriesData: { '176': portingData } };
+console.log(validatePortingCode('CFZK', '176', config));
 function parseMarkdownData(markdownText) {
   const cleanedMarkdown = cleanMarkdownContent(markdownText);
   
@@ -358,8 +511,7 @@ function parseMarkdownData(markdownText) {
     shaftStyles: [],
     motorFastenersSingle: [],
     rotationOptions: [...DEFAULT_ROTATION_OPTIONS],
-    // NEW: Add porting data structure
-    portingData: {}
+    portingData: parsePortingData(cleanedMarkdown) // Fixed to match function name
   };
 
   // Process shaft end covers
@@ -786,13 +938,12 @@ const PumpConfigurator = () => {
   }, [config]);
 
   // Add porting code field creator
+  // Replace the existing createPortingCodeField function with this updated version
   const createPortingCodeField = (index = 0, isAdditionalSection = false) => {
     const fieldId = `porting-code-${isAdditionalSection ? `section-${index + 2}` : 'primary'}`;
     const currentCode = isAdditionalSection ? 
       config.additionalPortingCodes[index] : 
       config.portingCodes[0];
-    const currentError = portingErrors[fieldId];
-    const currentInfo = portingInfo[fieldId];
   
     return React.createElement('div', { className: 'mb-4' },
       React.createElement('label', {
@@ -803,81 +954,58 @@ const PumpConfigurator = () => {
         id: fieldId,
         type: 'text',
         maxLength: 4,
-        className: `w-full p-2 border rounded ${currentError ? 'border-red-500' : 'border-gray-300'} focus:ring-blue-500 focus:border-blue-500 uppercase`,
+        className: `w-full p-2 border rounded ${
+          portingErrors[fieldId] ? 'border-red-500' : 'border-gray-300'
+        } focus:ring-blue-500 focus:border-blue-500 uppercase`,
         value: currentCode || '',
         onChange: (e) => handlePortingCodeChange(e.target.value, index, isAdditionalSection),
         placeholder: 'Enter porting code'
       }),
-      currentError && React.createElement('p', {
+      portingErrors[fieldId] && React.createElement('p', {
         className: 'mt-1 text-sm text-red-500'
-      }, currentError),
-      currentInfo && React.createElement('div', {
-        className: 'mt-2 p-2 bg-gray-50 rounded text-sm'
-      }, [
-        React.createElement('p', { key: 'type' }, `Type: ${currentInfo.type}`),
-        React.createElement('p', { key: 'leftPort' }, `Left Port: ${currentInfo.leftPort}`),
-        React.createElement('p', { key: 'rightPort' }, `Right Port: ${currentInfo.rightPort}`),
-        currentInfo.info && React.createElement('p', { key: 'info' }, `Additional Info: ${currentInfo.info}`)
-      ])
+      }, portingErrors[fieldId]),
+      React.createElement(PortingCodeDisplay, {
+        portingCode: currentCode,
+        seriesData: currentSeriesData,
+        pumpType: config.pumpType
+      })
     );
   };
 
   // Add porting code change handler
+  // Update the porting code change handler
   const handlePortingCodeChange = (value, index = 0, isAdditionalSection = false) => {
     const code = value.toUpperCase();
     const fieldId = `porting-code-${isAdditionalSection ? `section-${index + 2}` : 'primary'}`;
-    
     const newConfig = { ...config };
     const newErrors = { ...portingErrors };
     const newInfo = { ...portingInfo };
-  
-    // Update the code in config first
+
     if (isAdditionalSection) {
-      const newCodes = [...(newConfig.additionalPortingCodes || [])];
-      newCodes[index] = code;
-      newConfig.additionalPortingCodes = newCodes;
+        newConfig.additionalPortingCodes[index] = code;
     } else {
-      newConfig.portingCodes = [code];
+        newConfig.portingCodes = [code];
     }
-  
-    // Only validate if we have enough characters
-    if (code && code.length === 4) {
-      try {
+
+    if (code.length >= 3) {
         const validation = validatePortingCode(code, config.series, config);
         if (validation.isValid) {
-          newErrors[fieldId] = null;
-          newInfo[fieldId] = validation.data;
+            newErrors[fieldId] = null;
+            newInfo[fieldId] = validation.data;
         } else {
-          newErrors[fieldId] = validation.error;
-          newInfo[fieldId] = null;
+            newErrors[fieldId] = validation.error;
+            newInfo[fieldId] = null;
         }
-      } catch (error) {
-        console.error('Validation error:', error);
-        newErrors[fieldId] = 'Error validating porting code';
-        newInfo[fieldId] = null;
-      }
     } else {
-      // Clear errors while typing
-      newErrors[fieldId] = null;
-      newInfo[fieldId] = null;
+        newErrors[fieldId] = null;
+        newInfo[fieldId] = null;
     }
-  
+
     setConfig(newConfig);
     setPortingErrors(newErrors);
     setPortingInfo(newInfo);
-  };
+};
 
-  // Your existing handler functions remain unchanged
-  const handleSeriesChange = (value) => {
-    console.log('Series changed to:', value);
-    setConfig({
-      ...initialState,
-      series: value
-    });
-    setError(null);
-    setPortingErrors({});
-    setPortingInfo({});
-  };
 
   // [Continues in Part 7...]
   // [Continued from Part 6...]
@@ -898,7 +1026,20 @@ const PumpConfigurator = () => {
     setPortingErrors({});
     setPortingInfo({});
   };
-
+  const handleSeriesChange = (value) => {
+    console.group('Series Change');
+    console.log('Series changed to:', value);
+    console.log('Current Series Data:', seriesData[value]);
+    console.groupEnd();
+  
+    setConfig({
+      ...initialState,
+      series: value
+    });
+    setError(null);
+    setPortingErrors({});
+    setPortingInfo({});
+  };
   const handlePumpTypeChange = (value) => {
     const newConfig = { ...config, pumpType: value };
     if (value === 'single') {
@@ -1212,10 +1353,11 @@ async function loadSeriesData() {
         if (!content || !content.trim()) {
           throw new Error(`Empty content for ${filename}`);
         }
-
+        debugMarkdownContent(content, `Series ${series}`);
         const parsedData = parseMarkdownData(content);
         // Add porting data to the parsed data
-        parsedData.portingData = parsePortingCodes(content);
+        // Add porting data to the parsed data
+parsedData.portingData = parsePortingData(content);
         
         console.log(`Successfully parsed data for series ${series}`);
         loadedData[series] = parsedData;
@@ -1228,7 +1370,7 @@ async function loadSeriesData() {
     if (Object.keys(loadedData).length === 0) {
       throw new Error('No series data could be loaded');
     }
-
+    console.log('Final Series Data:', seriesData);
     seriesData = loadedData;
     console.log(`Successfully loaded ${Object.keys(loadedData).length} series`);
     initializeConfigurator();
