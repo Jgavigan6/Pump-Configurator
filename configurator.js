@@ -7,6 +7,7 @@ function debugLog(context, data, type = 'info') {
   if (!DEBUG) return;
   console[type === 'error' ? 'error' : type === 'warn' ? 'warn' : 'log'](`[${context}]:`, data);
 }
+<<<<<<< HEAD
 function debugPortingData(code, series, currentSeriesData, validationResult) {
   console.group('Porting Code Debug');
   console.log('Analyzing code:', code);
@@ -26,11 +27,21 @@ function debugPortingData(code, series, currentSeriesData, validationResult) {
 const SERIES_FILES = {
   '20': '20.md',
   '51': '51.md', 
+=======
+
+const SERIES_FILES = {
+  '20': '20.md',
+  '51': '51.md',
+>>>>>>> 73eeeb5e6d4396731f8469cec425f55759f63b78
   '76': '76.md',
   '120': '120.md',
   '131': '131.md',
   '151': '151.md',
+<<<<<<< HEAD
   '176': '176.md', 
+=======
+  '176': '176.md',
+>>>>>>> 73eeeb5e6d4396731f8469cec425f55759f63b78
   '215': '215.md',
   '230': '230.md',
   '250': '250.md',
@@ -39,6 +50,7 @@ const SERIES_FILES = {
   '330': '330.md',
   '350': '350.md',
   '365': '365.md'
+<<<<<<< HEAD
 };
 const PortingCodeDisplay = ({ portingCode, seriesData }) => {
   // Debugging logs
@@ -77,6 +89,8 @@ const PortingCodeDisplay = ({ portingCode, seriesData }) => {
               : React.createElement('div', { className: 'text-gray-500' }, 'Gear Housing part not provided')
       )
   );
+=======
+>>>>>>> 73eeeb5e6d4396731f8469cec425f55759f63b78
 };
 
 
@@ -105,6 +119,7 @@ const DEFAULT_ROTATION_OPTIONS = [
   { code: '9', description: 'Birotational motor with 1-1/4" NPT case drain without bearing' }
 ];
 
+<<<<<<< HEAD
 // NEW: Add function to parse porting sections
 function parsePortingData(markdownText) {
   console.group('Parsing Porting Data');
@@ -299,6 +314,79 @@ function parsePortingTable(section) {
 
 
 // Original code continues
+=======
+async function testFile(filename) {
+  try {
+    const content = await window.fs.readFile(filename);
+    console.log(`Successfully read ${filename}`);
+    console.log('Content preview:', content.toString().substring(0, 100));
+    return true;
+  } catch (error) {
+    console.error(`Error reading ${filename}:`, error);
+    return false;
+  }
+}
+
+// First, update how we read files
+async function loadSeriesData() {
+  try {
+    console.log('Starting to load series data...');
+    const loadedData = {};
+    
+    for (const [series, filename] of Object.entries(SERIES_FILES)) {
+      try {
+        console.log(`Attempting to load ${filename} for series ${series}`);
+        
+        try {
+          // Use fetch instead of window.fs
+          const response = await fetch(filename);
+          if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+          }
+          const content = await response.text();
+          
+          if (!content || !content.trim()) {
+            throw new Error(`Empty content for ${filename}`);
+          }
+
+          const parsedData = await parseMarkdownData(content);
+          console.log(`Successfully parsed data for series ${series}`);
+          loadedData[series] = parsedData;
+
+        } catch (readError) {
+          console.error(`Error reading ${filename}:`, readError);
+        }
+
+      } catch (error) {
+        console.error(`Failed to process ${filename}:`, error);
+      }
+    }
+
+    if (Object.keys(loadedData).length === 0) {
+      throw new Error('No series data could be loaded');
+    }
+
+    seriesData = loadedData;
+    console.log(`Successfully loaded ${Object.keys(loadedData).length} series`);
+    initializeConfigurator();
+
+  } catch (error) {
+    console.error('Error in loadSeriesData:', error);
+    document.getElementById('root').innerHTML = `
+      <div class="p-4 bg-red-100 border border-red-400 text-red-700 rounded">
+        <h3 class="font-bold mb-2">Error loading configurator data:</h3>
+        <p>Error: ${error.message}</p>
+        <p class="mt-2">Please ensure all files are accessible:</p>
+        <ul class="mt-1 text-sm list-disc list-inside">
+          ${Object.values(SERIES_FILES).map(f => `<li>${f}</li>`).join('\n')}
+        </ul>
+        <p class="mt-2 text-sm">Check console for detailed error messages.</p>
+      </div>
+    `;
+  }
+}
+// Helper functions for parsing and processing
+>>>>>>> 73eeeb5e6d4396731f8469cec425f55759f63b78
 function cleanMarkdownContent(content) {
   if (!content) return '';
   return content.toString()
@@ -317,6 +405,7 @@ function findSectionContent(text, sectionName) {
 
 function parseTableData(section) {
   if (!section) return [];
+<<<<<<< HEAD
 
   try {
     const lines = section.split('\n')
@@ -331,12 +420,36 @@ function parseTableData(section) {
           .map(cell => cell.trim())
           .filter(cell => cell);
         return cells.length >= 2 ? cells : null;
+=======
+  try {
+    const lines = section.split('\n')
+      .map(line => line.trim())
+      .filter(line => line && line.includes('|'));
+
+    if (lines.length < 2) return [];
+
+    return lines.slice(2)
+      .map(line => {
+        const cells = line.split('|')
+          .map(cell => cell.trim())
+          .filter((cell, index, arr) => index > 0 && index < arr.length - 1);
+        return cells.length ? cells : null;
+>>>>>>> 73eeeb5e6d4396731f8469cec425f55759f63b78
       })
       .filter(Boolean);
   } catch (error) {
     console.error('Error parsing table data:', error);
     return [];
   }
+<<<<<<< HEAD
+=======
+}
+
+function findDriveGearSections(content) {
+  if (!content) return [];
+  const mainPattern = /### Code \d+[^#]*?(?=###|$)/gs;
+  return (content.match(mainPattern) || []).map(section => section.trim());
+>>>>>>> 73eeeb5e6d4396731f8469cec425f55759f63b78
 }
 
 function findDriveGearSections(content) {
@@ -389,6 +502,7 @@ function processGearSections(markdown) {
   return { driveGearSets, shaftStyles };
 }
 
+<<<<<<< HEAD
 function parseBearingCarriers(section) {
   if (!section) return [];
   const tableData = parseTableData(section);
@@ -492,6 +606,8 @@ console.log('Parsed Porting Data:', portingData);
 // Test validation
 const config = { seriesData: { '176': portingData } };
 console.log(validatePortingCode('CFZK', '176', config));
+=======
+>>>>>>> 73eeeb5e6d4396731f8469cec425f55759f63b78
 function parseMarkdownData(markdownText) {
   const cleanedMarkdown = cleanMarkdownContent(markdownText);
   
@@ -514,7 +630,15 @@ function parseMarkdownData(markdownText) {
     portingData: parsePortingData(cleanedMarkdown) // Fixed to match function name
   };
 
+<<<<<<< HEAD
   // Process shaft end covers
+=======
+  const { driveGearSets, shaftStyles } = processGearSections(cleanedMarkdown);
+  data.driveGearSets = driveGearSets;
+  data.shaftStyles = shaftStyles;
+
+  // Parse shaft end covers
+>>>>>>> 73eeeb5e6d4396731f8469cec425f55759f63b78
   const pumpSecContent = findSectionContent(cleanedMarkdown, 'Shaft End Cover \\(SEC\\) - Pumps') || 
                         findSectionContent(cleanedMarkdown, 'Shaft End Cover \\(SEC\\)');
   if (pumpSecContent) {
@@ -527,7 +651,10 @@ function parseMarkdownData(markdownText) {
       .filter(item => item.code && item.partNumber);
   }
 
+<<<<<<< HEAD
   // Process motor shaft end covers
+=======
+>>>>>>> 73eeeb5e6d4396731f8469cec425f55759f63b78
   const motorSecContent = findSectionContent(cleanedMarkdown, 'Shaft End Cover \\(SEC\\) - Motors');
   if (motorSecContent) {
     data.motorShaftEndCovers = parseTableData(motorSecContent)
@@ -539,6 +666,7 @@ function parseMarkdownData(markdownText) {
       .filter(item => item.code && item.partNumber);
   }
 
+<<<<<<< HEAD
   // [Continues in Part 3...]
   // [Continued from Part 2...]
 
@@ -566,22 +694,46 @@ function parseMarkdownData(markdownText) {
   // Process gear housings
   const gearContent = findSectionContent(cleanedMarkdown, 'Gear Housing') ||
                      findSectionContent(cleanedMarkdown, 'Gear Housing - Pumps');
+=======
+  // Parse PEC covers and gear housings
+  const pecContent = findSectionContent(cleanedMarkdown, 'P\\.E\\.C Cover') || 
+                    findSectionContent(cleanedMarkdown, 'Port End Covers');
+  if (pecContent) {
+    data.pecCovers = parseTableData(pecContent)
+      .map(([description, partNumber]) => ({
+        description,
+        partNumber
+      }))
+      .filter(item => item.partNumber && item.description);
+  }
+
+  const gearContent = findSectionContent(cleanedMarkdown, 'Gear Housing') ||
+                     findSectionContent(cleanedMarkdown, 'Gear Housing - Pump');
+>>>>>>> 73eeeb5e6d4396731f8469cec425f55759f63b78
   if (gearContent) {
     data.gearHousings = parseTableData(gearContent)
       .map(([code, partNumber, description]) => ({
         code,
         partNumber,
+<<<<<<< HEAD
         description: description || code
+=======
+        description: description || 'Standard'
+>>>>>>> 73eeeb5e6d4396731f8469cec425f55759f63b78
       }))
       .filter(item => item.code && item.partNumber);
   }
 
+<<<<<<< HEAD
   // Process drive gear sets
   const { driveGearSets, shaftStyles } = processGearSections(cleanedMarkdown);
   data.driveGearSets = driveGearSets;
   data.shaftStyles = shaftStyles;
 
   // Process idler gear sets
+=======
+  // Parse remaining sections
+>>>>>>> 73eeeb5e6d4396731f8469cec425f55759f63b78
   const idlerSection = findSectionContent(cleanedMarkdown, 'Idler Gear Sets');
   if (idlerSection) {
     data.idlerGearSets = parseTableData(idlerSection)
@@ -593,6 +745,7 @@ function parseMarkdownData(markdownText) {
       .filter(item => item.code && item.partNumber);
   }
 
+<<<<<<< HEAD
   // Process bearing carriers
   const bearingSection = findSectionContent(cleanedMarkdown, 'Bearing Carriers');
   if (bearingSection) {
@@ -600,6 +753,20 @@ function parseMarkdownData(markdownText) {
   }
 
   // Process fasteners
+=======
+  const bearingSection = findSectionContent(cleanedMarkdown, 'Bearing Carriers');
+  if (bearingSection) {
+    data.bearingCarriers = parseTableData(bearingSection)
+      .map(([description, partNumber, commonNumber]) => ({
+        description,
+        partNumber,
+        commonNumber: commonNumber ? commonNumber.replace(/[()]/g, '').trim() : ''
+      }))
+      .filter(item => item.partNumber);
+  }
+
+  // Parse fasteners
+>>>>>>> 73eeeb5e6d4396731f8469cec425f55759f63b78
   const singleFasteners = findSectionContent(cleanedMarkdown, 'Fasteners - Single Units');
   if (singleFasteners) {
     data.fastenersSingle = parseTableData(singleFasteners)
@@ -608,17 +775,45 @@ function parseMarkdownData(markdownText) {
         partNumber
       }))
       .filter(item => item.partNumber);
+<<<<<<< HEAD
+=======
+  }
+
+  const doublesSection = findSectionContent(cleanedMarkdown, 'Doubles');
+  if (doublesSection) {
+    data.fastenersDoubles = parseTableData(doublesSection)
+      .map(([condition, partNumber]) => ({
+        condition: condition.trim(),
+        partNumber: partNumber.trim()
+      }))
+      .filter(item => item.partNumber);
+  }
+
+  const triplesSection = findSectionContent(cleanedMarkdown, 'Triples/Quads') ||
+                        findSectionContent(cleanedMarkdown, 'Triples');
+  if (triplesSection) {
+    data.fastenersTripleQuad = parseTableData(triplesSection)
+      .map(([condition, partNumber]) => ({
+        condition: condition.trim(),
+        partNumber: partNumber.trim()
+      }))
+      .filter(item => item.partNumber);
+>>>>>>> 73eeeb5e6d4396731f8469cec425f55759f63b78
   }
 
   return data;
 }
+<<<<<<< HEAD
 
+=======
+>>>>>>> 73eeeb5e6d4396731f8469cec425f55759f63b78
 function calculateTotalGearWidth(config, currentSeriesData) {
   if (!currentSeriesData?.gearHousings || !config.gearSize) return 0;
 
   let totalWidth = 0;
   const extractWidth = (description) => {
     if (!description) return null;
+<<<<<<< HEAD
     // Handle various dimension formats
     const match = description.match(/(\d+(?:\/\d+)?|\d+(?:-\d+\/\d+)?)"?[-\s]/);
     if (match) {
@@ -631,6 +826,10 @@ function calculateTotalGearWidth(config, currentSeriesData) {
       }
     }
     return null;
+=======
+    const match = description.match(/(\d+(?:\.\d+)?)"?[-\s]/);
+    return match ? parseFloat(match[1]) : null;
+>>>>>>> 73eeeb5e6d4396731f8469cec425f55759f63b78
   };
 
   const primaryGear = currentSeriesData.gearHousings.find(h => h.code === config.gearSize);
@@ -682,7 +881,11 @@ function determineFastenerPartNumber(config, currentSeriesData, totalGearWidth) 
   if (!fastenersMulti?.length) return null;
 
   return fastenersMulti.find(f => {
+<<<<<<< HEAD
     const widthMatch = f.condition.match(/(\d+(?:\.\d+)?)/);
+=======
+    const widthMatch = f.condition.match(/(\d+(\.\d+)?)/);
+>>>>>>> 73eeeb5e6d4396731f8469cec425f55759f63b78
     if (!widthMatch) return false;
     const widthLimit = parseFloat(widthMatch[1]);
     return f.condition.includes('less than') ? 
@@ -691,10 +894,13 @@ function determineFastenerPartNumber(config, currentSeriesData, totalGearWidth) 
   })?.partNumber;
 }
 
+<<<<<<< HEAD
 // [Continues in Part 4...]
 // [Continued from Part 3...]
 
 // Modified to include porting codes in model code generation
+=======
+>>>>>>> 73eeeb5e6d4396731f8469cec425f55759f63b78
 function generateModelCode(config) {
   if (!config.type || !config.series || !config.rotation || 
       !config.secCode || !config.gearSize || !config.shaftStyle) {
@@ -746,7 +952,10 @@ function generateBOM(config) {
       return false;
     };
 
+<<<<<<< HEAD
     // Get appropriate component set
+=======
+>>>>>>> 73eeeb5e6d4396731f8469cec425f55759f63b78
     const components = (is200Series || is300Series) && config.type === 'M' ?
       {
         shaftEndCovers: currentSeriesData.motorShaftEndCovers,
@@ -781,7 +990,10 @@ function generateBOM(config) {
         if (housing) {
           addToBOM(housing.partNumber, 1,
             `Gear Housing ${index === 0 ? '(Primary)' : `(Section ${index + 2})`} - ${housing.description}`);
+<<<<<<< HEAD
           
+=======
+>>>>>>> 73eeeb5e6d4396731f8469cec425f55759f63b78
         }
       });
     }
@@ -807,10 +1019,14 @@ function generateBOM(config) {
       }
     }
 
+<<<<<<< HEAD
     // [Continues in Part 5...]
    // [Continued from Part 4...]
 
     // Add idler gear sets for multi-section units
+=======
+    // Add idler gear sets
+>>>>>>> 73eeeb5e6d4396731f8469cec425f55759f63b78
     if (config.pumpType !== 'single' && config.additionalGearSizes) {
       config.additionalGearSizes.forEach((size, index) => {
         if (size) {
@@ -831,6 +1047,7 @@ function generateBOM(config) {
       }
     }
 
+<<<<<<< HEAD
     // Add bearing carrier for multi-section units
     if (['tandem', 'triple', 'quad'].includes(config.pumpType) && config.bearingCarrierSelections) {
       config.bearingCarrierSelections.forEach((selection, index) => {
@@ -858,6 +1075,20 @@ function generateBOM(config) {
           }
         }
       });
+=======
+    // Add bearing carrier
+    if (['tandem', 'triple', 'quad'].includes(config.pumpType) && config.bearingCarrierSelection) {
+      const qty = determineBearingCarrierQty(config.pumpType);
+      const bearingCarrier = currentSeriesData.bearingCarriers?.find(
+        bc => bc.partNumber === config.bearingCarrierSelection
+      );
+      
+      if (bearingCarrier && qty > 0) {
+        addToBOM(bearingCarrier.partNumber, qty,
+          `Bearing Carrier - ${bearingCarrier.description}${
+            bearingCarrier.commonNumber ? ` (${bearingCarrier.commonNumber})` : ''}`);
+      }
+>>>>>>> 73eeeb5e6d4396731f8469cec425f55759f63b78
     }
 
     // Add fasteners
@@ -882,8 +1113,12 @@ function generateBOM(config) {
       }[config.pumpType];
       
       if (pumpTypeNumber) {
+<<<<<<< HEAD
         const smallPartsKit = `${config.type}${config.series}-${pumpTypeNumber}`;
         addToBOM(smallPartsKit, 1, 'Small Parts Kit');
+=======
+        addToBOM(`${config.type}${config.series}-${pumpTypeNumber}`, 1, 'Small Parts Kit');
+>>>>>>> 73eeeb5e6d4396731f8469cec425f55759f63b78
       }
     }
 
@@ -893,6 +1128,7 @@ function generateBOM(config) {
 
   return bom;
 }
+<<<<<<< HEAD
 
 // Main React Component
 const PumpConfigurator = () => {
@@ -1404,3 +1640,25 @@ window.addEventListener('load', () => {
   console.log('Window loaded, starting configurator initialization...');
   loadSeriesData();
 });
+=======
+
+// Update the test function to use fetch
+async function testFile(filename) {
+  try {
+    const response = await fetch(filename);
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+    const content = await response.text();
+    console.log(`Successfully read ${filename}`);
+    console.log('Content preview:', content.substring(0, 100));
+    return true;
+  } catch (error) {
+    console.error(`Error reading ${filename}:`, error);
+    return false;
+  }
+}
+
+// Start loading on page load
+window.onload = loadSeriesData;
+>>>>>>> 73eeeb5e6d4396731f8469cec425f55759f63b78

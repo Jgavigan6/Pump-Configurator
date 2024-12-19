@@ -7,78 +7,34 @@
     <script src="https://unpkg.com/react@17/umd/react.development.js"></script>
     <script src="https://unpkg.com/react-dom@17/umd/react-dom.development.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
-    <style>
-        .bom-table {
-            border-collapse: collapse;
-            width: 100%;
-            font-family: Arial, sans-serif;
-            font-size: 14px;
-            border: 1px solid #ccc;
-        }
-        
-        .bom-table th {
-            background-color: #f3f3f3;
-            border: 1px solid #ccc;
-            padding: 8px;
-            font-weight: bold;
-            text-align: left;
-            position: sticky;
-            top: 0;
-            user-select: none;
-        }
-        
-        .bom-table td {
-            border: 1px solid #ccc;
-            padding: 8px;
-            background-color: white;
-        }
-        
-        .bom-table tr:hover td {
-            background-color: #e6f3ff;
-        }
-        
-        .selectable-cell {
-            cursor: cell;
-            user-select: text;
-        }
-        
-        .bom-table td.selectable-cell:focus {
-            outline: 2px solid #2196F3;
-            outline-offset: -2px;
-            background-color: #e6f3ff;
-        }
-        
-        .bom-table td:nth-child(1) {
-            width: 150px;
-        }
-        
-        .bom-table td:nth-child(2) {
-            width: 80px;
-        }
-        
-        .bom-table td:nth-child(3) {
-            width: auto;
-        }
-        
-        .table-container {
-            max-height: 500px;
-            overflow-y: auto;
-            border: 1px solid #ccc;
-            border-radius: 4px;
-            margin-top: 10px;
-        }
-        
-        .bom-table td::selection {
-            background-color: #b3d7ff;
-        }
-        
-        .bom-table td::-moz-selection {
-            background-color: #b3d7ff;
-        }
-    </style>
 </head>
-<body class="bg-gray-100 p-4">
+<body class="bg-gray-100">
     <div id="root">Loading configurator data...</div>
+    <script>
+        // Add this helper function to read files
+        window.fs = {
+            async readFile(path) {
+                try {
+                    const response = await fetch(path);
+                    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+                    return await response.text();
+                } catch (error) {
+                    console.error(`Error reading file ${path}:`, error);
+                    throw error;
+                }
+            },
+            async readFileBuffer(path) {
+                try {
+                    const response = await fetch(path);
+                    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+                    return await response.arrayBuffer();
+                } catch (error) {
+                    console.error(`Error reading file ${path}:`, error);
+                    throw error;
+                }
+            }
+        };
+    </script>
     <script src="configurator.js"></script>
 </body>
 </html>
